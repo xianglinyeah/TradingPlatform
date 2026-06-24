@@ -1,0 +1,92 @@
+# ClickHouse - Columnar OLAP database
+# Used for large-scale analytical query scenarios (e.g. fundamentals.daily_valuation 15.9M rows aggregation)
+# Complementary to PostgreSQL: OLTP goes to PG, OLAP goes to CH
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: infrastructure
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      containers:
+      - name: clickhouse
+        image: clickhouse/clickhouse-server:24.8
+        ports:
+        - name: http
+          containerPort: 8123
+        - name: native
+          containerPort: 9000
+        env:
+        - name: CLICKHOUSE_DB
+          value: dev
+        - name: CLICKHOUSE_USER
+          value: dev_user
+        - name: CLICKHOUSE_PASSWORD
+          value: dev_pass
+        - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+          value: "1"
+        volumeMounts:
+        - name: clickhouse-storage
+          mountPath: /var/lib/clickhouse
+        - name: clickhouse-logs
+          mountPath: /var/log/clickhouse-server
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        # Health check: HTTP /ping returns "Ok."
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8123
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8123
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: clickhouse-logs
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: clickhouse-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 20Gi
+---
+# HTTP API + Native protocol dual ports
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: infrastructure
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+  selector:
+    app: clickhouse

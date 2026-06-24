@@ -1,0 +1,531 @@
+{
+    "meta": {
+        "type": "db",
+        "canSave": true,
+        "canEdit": true,
+        "canAdmin": true,
+        "canStar": true,
+        "canDelete": true,
+        "slug": "log",
+        "url": "/d/a2db13a3-8687-4391-844a-945415999cf5/log",
+        "expires": "0001-01-01T00:00:00Z",
+        "created": "2026-06-07T12:28:07Z",
+        "updated": "2026-06-07T12:43:48Z",
+        "updatedBy": "admin",
+        "createdBy": "admin",
+        "version": 3,
+        "hasAcl": false,
+        "isFolder": false,
+        "apiVersion": "v0alpha1",
+        "folderId": 0,
+        "folderUid": "",
+        "folderTitle": "General",
+        "folderUrl": "",
+        "provisioned": false,
+        "provisionedExternalId": "",
+        "annotationsPermissions": {
+            "dashboard": {
+                "canAdd": true,
+                "canEdit": true,
+                "canDelete": true
+            }
+        }
+    },
+    "dashboard": {
+        "annotations": {
+            "list": [
+                {
+                    "builtIn": 1,
+                    "datasource": {
+                        "type": "grafana",
+                        "uid": "-- Grafana --"
+                    },
+                    "enable": true,
+                    "hide": true,
+                    "iconColor": "rgba(0, 211, 255, 1)",
+                    "name": "Annotations & Alerts",
+                    "type": "dashboard"
+                }
+            ]
+        },
+        "editable": true,
+        "fiscalYearStartMonth": 0,
+        "graphTooltip": 0,
+        "id": 950250457583616,
+        "liveNow": false,
+        "panels": [
+            {
+                "datasource": {
+                    "type": "loki",
+                    "uid": "efoeexvwey5tsa"
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "color": {
+                            "mode": "palette-classic"
+                        },
+                        "custom": {
+                            "axisBorderShow": false,
+                            "axisCenteredZero": false,
+                            "axisColorMode": "text",
+                            "axisLabel": "",
+                            "axisPlacement": "auto",
+                            "barAlignment": 0,
+                            "barWidthFactor": 0.6,
+                            "drawStyle": "line",
+                            "fillOpacity": 10,
+                            "gradientMode": "none",
+                            "hideFrom": {
+                                "legend": false,
+                                "tooltip": false,
+                                "viz": false
+                            },
+                            "insertNulls": false,
+                            "lineInterpolation": "linear",
+                            "lineWidth": 1,
+                            "pointSize": 5,
+                            "scaleDistribution": {
+                                "type": "linear"
+                            },
+                            "showPoints": "never",
+                            "showValues": false,
+                            "spanNulls": true,
+                            "stacking": {
+                                "group": "A",
+                                "mode": "none"
+                            },
+                            "thresholdsStyle": {
+                                "mode": "off"
+                            }
+                        },
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "green",
+                                    "value": 0
+                                }
+                            ]
+                        },
+                        "unit": "short"
+                    }
+                },
+                "gridPos": {
+                    "h": 8,
+                    "w": 24,
+                    "x": 0,
+                    "y": 0
+                },
+                "id": 1,
+                "options": {
+                    "annotations": {
+                        "clustering": -1,
+                        "multiLane": false
+                    },
+                    "legend": {
+                        "calcs": [],
+                        "displayMode": "list",
+                        "placement": "bottom",
+                        "showLegend": true
+                    },
+                    "tooltip": {
+                        "hideZeros": false,
+                        "mode": "single",
+                        "sort": "none"
+                    }
+                },
+                "pluginVersion": "13.0.2",
+                "targets": [
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "sum(count_over_time({job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"}[1m]))",
+                        "legendFormat": "Total Logs",
+                        "refId": "A"
+                    },
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "sum(count_over_time({job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"} |= \"ERROR\"[1m]))",
+                        "legendFormat": "Error Logs",
+                        "refId": "B"
+                    }
+                ],
+                "title": "Log Volume Over Time",
+                "type": "timeseries"
+            },
+            {
+                "datasource": {
+                    "type": "loki",
+                    "uid": "efoeexvwey5tsa"
+                },
+                "gridPos": {
+                    "h": 20,
+                    "w": 24,
+                    "x": 0,
+                    "y": 8
+                },
+                "id": 4,
+                "options": {
+                    "dedupStrategy": "auto",
+                    "derivedFields": [],
+                    "enableInfiniteScrolling": false,
+                    "enableLogDetails": true,
+                    "excerptLines": 5,
+                    "maxLineLength": 0,
+                    "prettifyLogMessage": false,
+                    "showAllLabels": false,
+                    "showCommonLabels": false,
+                    "showControls": false,
+                    "showFieldSelector": false,
+                    "showLabels": [
+                        "container",
+                        "namespace",
+                        "stream"
+                    ],
+                    "showLevel": true,
+                    "showTime": true,
+                    "sortOrder": "Descending",
+                    "timeZoneInfo": {},
+                    "timestampResolution": "ms",
+                    "unwrappedColumns": false,
+                    "wrapLogMessage": false
+                },
+                "pluginVersion": "13.0.2",
+                "targets": [
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "{job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"}",
+                        "maxLines": 1000,
+                        "queryType": "range",
+                        "refId": "A"
+                    }
+                ],
+                "title": "All Logs",
+                "type": "logs"
+            },
+            {
+                "datasource": {
+                    "type": "loki",
+                    "uid": "efoeexvwey5tsa"
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "green",
+                                    "value": 0
+                                }
+                            ]
+                        },
+                        "unit": "short"
+                    }
+                },
+                "gridPos": {
+                    "h": 6,
+                    "w": 12,
+                    "x": 0,
+                    "y": 28
+                },
+                "id": 2,
+                "options": {
+                    "displayMode": "gradient",
+                    "gradientMode": "scheme",
+                    "legend": {
+                        "calcs": [],
+                        "displayMode": "list",
+                        "placement": "bottom",
+                        "showLegend": false
+                    },
+                    "maxVizHeight": 300,
+                    "minVizHeight": 16,
+                    "minVizWidth": 8,
+                    "namePlacement": "auto",
+                    "orientation": "auto",
+                    "reduceOptions": {
+                        "calcs": [
+                            "lastNotNull"
+                        ],
+                        "fields": "",
+                        "values": false
+                    },
+                    "showUnfilled": true,
+                    "sizing": "auto",
+                    "valueMode": "color"
+                },
+                "pluginVersion": "13.0.2",
+                "targets": [
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "sum(count_over_time({job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"}[5m])) by (container)",
+                        "legendFormat": "{{container}}",
+                        "refId": "A"
+                    }
+                ],
+                "title": "Log Volume by Container",
+                "type": "bargauge"
+            },
+            {
+                "datasource": {
+                    "type": "loki",
+                    "uid": "efoeexvwey5tsa"
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "thresholds": {
+                            "mode": "absolute",
+                            "steps": [
+                                {
+                                    "color": "green",
+                                    "value": 0
+                                }
+                            ]
+                        },
+                        "unit": "short"
+                    }
+                },
+                "gridPos": {
+                    "h": 6,
+                    "w": 12,
+                    "x": 12,
+                    "y": 28
+                },
+                "id": 3,
+                "options": {
+                    "displayMode": "gradient",
+                    "gradientMode": "scheme",
+                    "legend": {
+                        "calcs": [],
+                        "displayMode": "list",
+                        "placement": "bottom",
+                        "showLegend": false
+                    },
+                    "maxVizHeight": 300,
+                    "minVizHeight": 16,
+                    "minVizWidth": 8,
+                    "namePlacement": "auto",
+                    "orientation": "auto",
+                    "reduceOptions": {
+                        "calcs": [
+                            "lastNotNull"
+                        ],
+                        "fields": "",
+                        "values": false
+                    },
+                    "showUnfilled": true,
+                    "sizing": "auto",
+                    "valueMode": "color"
+                },
+                "pluginVersion": "13.0.2",
+                "targets": [
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "sum(count_over_time({job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"}[5m])) by (stream)",
+                        "legendFormat": "{{stream}}",
+                        "refId": "A"
+                    }
+                ],
+                "title": "Log Volume by Stream (stdout/stderr)",
+                "type": "bargauge"
+            },
+            {
+                "datasource": {
+                    "type": "loki",
+                    "uid": "efoeexvwey5tsa"
+                },
+                "gridPos": {
+                    "h": 12,
+                    "w": 24,
+                    "x": 0,
+                    "y": 34
+                },
+                "id": 5,
+                "options": {
+                    "dedupStrategy": "auto",
+                    "derivedFields": [],
+                    "enableLogDetails": true,
+                    "excerptLines": 5,
+                    "maxLineLength": 0,
+                    "prettifyLogMessage": false,
+                    "showAllLabels": false,
+                    "showCommonLabels": false,
+                    "showLabels": [
+                        "container",
+                        "namespace",
+                        "stream"
+                    ],
+                    "showTime": true,
+                    "sortOrder": "Descending",
+                    "timeZoneInfo": {},
+                    "wrapLogMessage": false
+                },
+                "pluginVersion": "",
+                "targets": [
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "{job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"} |= \"ERROR\"",
+                        "maxLines": 100,
+                        "queryType": "range",
+                        "refId": "A"
+                    },
+                    {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "editorMode": "builder",
+                        "expr": "{job=\"kubernetes-pods\", namespace!=\"infrastructure\", container=~\"$container\"} |= \"WARN\"",
+                        "maxLines": 100,
+                        "queryType": "range",
+                        "refId": "B"
+                    }
+                ],
+                "title": "Error Logs Only",
+                "type": "logs"
+            }
+        ],
+        "preload": false,
+        "refresh": "30s",
+        "schemaVersion": 42,
+        "tags": [
+            "logs",
+            "trading",
+            "loki"
+        ],
+        "templating": {
+            "list": [
+                {
+                    "allValue": ".*",
+                    "allowCustomValue": true,
+                    "current": {
+                        "text": "All",
+                        "value": "execution-service|market-data-replay|strategy-engine|market-data-gm|execution-adapter-gm|data-ingestion"
+                    },
+                    "hide": 0,
+                    "includeAll": true,
+                    "multi": true,
+                    "name": "container",
+                    "options": [
+                        {
+                            "selected": false,
+                            "text": "All",
+                            "value": "$__all"
+                        },
+                        {
+                            "selected": false,
+                            "text": "execution-service",
+                            "value": "execution-service"
+                        },
+                        {
+                            "selected": false,
+                            "text": "market-data-replay",
+                            "value": "market-data-replay"
+                        },
+                        {
+                            "selected": false,
+                            "text": "strategy-engine",
+                            "value": "strategy-engine"
+                        },
+                        {
+                            "selected": false,
+                            "text": "market-data-gm",
+                            "value": "market-data-gm"
+                        },
+                        {
+                            "selected": false,
+                            "text": "execution-adapter-gm",
+                            "value": "execution-adapter-gm"
+                        },
+                        {
+                            "selected": false,
+                            "text": "data-ingestion",
+                            "value": "data-ingestion"
+                        }
+                    ],
+                    "query": "execution-service,market-data-replay,strategy-engine,market-data-gm,execution-adapter-gm,data-ingestion",
+                    "skipUrlSync": false,
+                    "type": "custom",
+                    "valuesFormat": "csv"
+                },
+                {
+                    "allValue": ".*",
+                    "allowCustomValue": true,
+                    "current": {
+                        "text": "",
+                        "value": ""
+                    },
+                    "datasource": {
+                        "type": "loki"
+                    },
+                    "hide": 0,
+                    "includeAll": true,
+                    "multi": true,
+                    "name": "stream",
+                    "options": [],
+                    "query": {
+                        "datasource": {
+                            "type": "loki",
+                            "uid": "efoeexvwey5tsa"
+                        },
+                        "expr": "{job=\"kubernetes-pods\", namespace!=\"infrastructure\"}",
+                        "label": "stream",
+                        "queryType": "labelValues",
+                        "refId": "Stream"
+                    },
+                    "refresh": 0,
+                    "regex": "",
+                    "regexApplyTo": "value",
+                    "skipUrlSync": false,
+                    "sort": 0,
+                    "type": "query"
+                }
+            ]
+        },
+        "time": {
+            "from": "now-6h",
+            "to": "now"
+        },
+        "timepicker": {
+            "refresh_intervals": [
+                "5s",
+                "10s",
+                "30s",
+                "1m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "2h",
+                "1d"
+            ]
+        },
+        "timezone": "browser",
+        "title": "Log",
+        "uid": "a2db13a3-8687-4391-844a-945415999cf5",
+        "version": 3
+    }
+}

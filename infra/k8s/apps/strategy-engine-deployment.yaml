@@ -1,0 +1,111 @@
+# Complete StrategyEngine Deployment
+# Image rebuild: docker build -t docker-strategy-engine:latest src/strategy-engine/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strategy-engine
+  namespace: trading-platform
+  labels:
+    app: strategy-engine
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strategy-engine
+  template:
+    metadata:
+      labels:
+        app: strategy-engine
+        version: v1
+    spec:
+      containers:
+      - name: strategy-engine
+        image: docker-strategy-engine:latest
+        imagePullPolicy: IfNotPresent
+
+        # Run the real main.py
+        command: ["python", "main.py", "live", "--config", "config/e2e.yaml"]
+
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+
+        env:
+        # Kafka configuration
+        - name: KAFKA_BROKERS
+          value: "kafka.infrastructure:9092"
+        - name: KAFKA_TOPIC
+          value: "market.data"
+        - name: KAFKA_GROUP_ID
+          value: "strategy_service_live"
+
+        # Execution service configuration
+        - name: EXECUTION_SERVICE_ADDRESS
+          value: "execution-service:8084"
+        - name: SESSION_ID
+          value: "live-session-k8s"
+
+        # Logging
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: LOG_PATH
+          value: "/var/log/services/strategy-engine"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+
+        # Strategy configuration
+        - name: STRATEGY_INITIAL_CAPITAL
+          value: "1000000"
+        - name: STRATEGY_COMMISSION_RATE
+          value: "0.0003"
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+        - name: var-logs
+          mountPath: /var/log/services/strategy-engine
+
+      volumes:
+      - name: config
+        configMap:
+          name: strategy-engine-config
+      - name: logs
+        emptyDir: {}
+      - name: var-logs
+        hostPath:
+          path: /mnt/d/TradingPlatform/logs/strategy-engine
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+
+---
+# Service for StrategyEngine
+apiVersion: v1
+kind: Service
+metadata:
+  name: strategy-engine
+  namespace: trading-platform
+  labels:
+    app: strategy-engine
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: strategy-engine

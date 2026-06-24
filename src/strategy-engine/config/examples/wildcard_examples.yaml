@@ -1,0 +1,106 @@
+# Wildcard configuration examples
+# Demonstrates how to use wildcard patterns to match stock codes
+
+mode: live
+
+# Kafka configuration
+kafka_brokers: localhost:9092
+kafka_topic: market.data
+kafka_group_id: strategy_engine_example
+
+# Multi-strategy configuration - demonstrates various wildcard usages
+strategies:
+  # Example 1: Scan all Shanghai Stock Exchange stocks (main board + STAR market)
+  - name: scanner_sh_main_board
+    class: MovingAverageStrategy
+    enabled: true
+    symbols:
+      - "600*.SH"  # Shanghai main board (starts with 600)
+      - "601*.SH"  # Shanghai main board (starts with 601)
+      - "603*.SH"  # Shanghai main board (starts with 603)
+      - "605*.SH"  # Shanghai main board (starts with 605)
+    exclude_symbols:
+      - "ST.*"    # Exclude ST stocks
+      - "*ST.*"   # Exclude *ST stocks
+    params:
+      ema_period: 10
+      buy_threshold: -0.005
+      stop_loss_pct: -0.008
+      take_profit_pct: 0.012
+      quantity: 100
+      max_position: 1000
+
+  # Example 2: Scan all Shenzhen Stock Exchange stocks (main board + ChiNext)
+  - name: scanner_sz_all
+    class: MovingAverageStrategy
+    enabled: false
+    symbols:
+      - "00*.SZ"  # Shenzhen main board (starts with 00)
+      - "30*.SZ"  # ChiNext (starts with 30)
+    exclude_symbols:
+      - "ST.*"
+      - "*ST.*"
+    params:
+      ema_period: 20
+      buy_threshold: -0.01
+      stop_loss_pct: -0.015
+      take_profit_pct: 0.02
+      quantity: 100
+      max_position: 1000
+
+  # Example 3: Scan STAR market (starts with 688)
+  - name: scanner_kcb
+    class: MovingAverageStrategy
+    enabled: false
+    symbols:
+      - "688*.SH"  # STAR market
+    params:
+      ema_period: 5
+      buy_threshold: -0.003
+      stop_loss_pct: -0.005
+      take_profit_pct: 0.008
+      quantity: 100
+      max_position: 500
+
+  # Example 4: Scan entire market (all A-shares)
+  - name: scanner_all_a_shares
+    class: MovingAverageStrategy
+    enabled: false
+    symbols:
+      - "*"  # All stocks
+    exclude_symbols:
+      - "ST.*"     # Exclude ST
+      - "*ST.*"    # Exclude *ST
+      - "688*.SH"   # Exclude STAR market (optional)
+    params:
+      ema_period: 15
+      buy_threshold: -0.008
+      stop_loss_pct: -0.012
+      take_profit_pct: 0.015
+      quantity: 100
+      max_position: 1000
+
+  # Example 5: Exact match (backward compatible)
+  - name: exact_match_blue_chips
+    class: MovingAverageStrategy
+    enabled: true
+    symbols:
+      - "600519.SH"  # Kweichow Moutai
+      - "000001.SZ"  # Ping An Bank
+      - "600036.SH"  # China Merchants Bank
+    params:
+      ema_period: 10
+      buy_threshold: -0.005
+      stop_loss_pct: -0.008
+      take_profit_pct: 0.012
+      quantity: 100
+      max_position: 1000
+
+# Execution configuration
+executor: grpc
+execution_service_address: localhost:8084
+session_id: wildcard-example-session
+
+# Account configuration
+initial_capital: 1000000
+commission_rate: 0.0003

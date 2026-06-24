@@ -1,0 +1,23 @@
+# Token loaded from env var GM_TOKEN; account IDs from GM_PAPER_ACCOUNT_ID /
+# GM_LIVE_ACCOUNT_ID (see config.py).
+gm:
+  token: "${GM_TOKEN}"
+  address: "127.0.0.1:7001"
+  strategy_id: "gm-trading-adaptor"
+  paper_account_id: "${GM_PAPER_ACCOUNT_ID}"
+  live_account_id: "${GM_LIVE_ACCOUNT_ID}"
+grpc:
+  listen: "0.0.0.0:5005"
+  # Pool must comfortably exceed the max concurrent blocking PlaceOrder calls
+  # (each can block up to order.default_timeout_seconds). 16 is a safe minimum
+  # for single-strategy trading; bump up for higher fan-out.
+  workers: 16
+schedule:
+  poll_frequency_ms: 200      # how often the GM strategy thread polls the request queue
+  session_start: "09:15"
+  session_end: "15:30"
+order:
+  default_timeout_seconds: 30  # PlaceOrder Future timeout
+logging:
+  level: "INFO"
+  dir: "logs/execution-adapters-gm"

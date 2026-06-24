@@ -1,0 +1,119 @@
+[
+    {
+        "id": 1,
+        "uid": "efoeexvwey5tsa",
+        "orgId": 1,
+        "name": "Loki",
+        "type": "loki",
+        "typeName": "Loki",
+        "typeLogoUrl": "public/plugins/loki/img/loki_icon.svg",
+        "access": "proxy",
+        "url": "http://loki:3100",
+        "user": "",
+        "database": "",
+        "basicAuth": false,
+        "isDefault": true,
+        "jsonData": {
+            "maxLines": 1000
+        },
+        "readOnly": false
+    },
+    {
+        "id": 7,
+        "uid": "P44368ADAD746BC27",
+        "orgId": 1,
+        "name": "Postgres",
+        "type": "grafana-postgresql-datasource",
+        "typeName": "PostgreSQL",
+        "typeLogoUrl": "public/plugins/grafana-postgresql-datasource/img/postgresql_logo.svg",
+        "access": "proxy",
+        "url": "postgres.infrastructure.svc.cluster.local:5432",
+        "user": "dev_user",
+        "database": "dev",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "postgresVersion": 1300,
+            "searchPath": "execution_service,public",
+            "sslmode": "disable"
+        },
+        "readOnly": true
+    },
+    {
+        "id": 3,
+        "uid": "efof4kmn99szkf",
+        "orgId": 1,
+        "name": "PostgreSQL",
+        "type": "grafana-postgresql-datasource",
+        "typeName": "PostgreSQL",
+        "typeLogoUrl": "public/plugins/grafana-postgresql-datasource/img/postgresql_logo.svg",
+        "access": "proxy",
+        "url": "postgres.infrastructure.svc.cluster.local:5432",
+        "user": "dev_user",
+        "database": "execution_service",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "sslmode": "disable"
+        },
+        "readOnly": false
+    },
+    {
+        "id": 5,
+        "uid": "ffof5w53rq1a8b",
+        "orgId": 1,
+        "name": "PostgreSQL-Backtesting",
+        "type": "grafana-postgresql-datasource",
+        "typeName": "PostgreSQL",
+        "typeLogoUrl": "public/plugins/grafana-postgresql-datasource/img/postgresql_logo.svg",
+        "access": "proxy",
+        "url": "postgres.infrastructure.svc.cluster.local:5432",
+        "user": "dev_user",
+        "database": "execution_service",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "postgresVersion": 1300,
+            "sslmode": "disable"
+        },
+        "readOnly": false
+    },
+    {
+        "id": 4,
+        "uid": "dfof4vfjrnr40d",
+        "orgId": 1,
+        "name": "PostgreSQL-Execution",
+        "type": "grafana-postgresql-datasource",
+        "typeName": "PostgreSQL",
+        "typeLogoUrl": "public/plugins/grafana-postgresql-datasource/img/postgresql_logo.svg",
+        "access": "proxy",
+        "url": "postgres.infrastructure.svc.cluster.local:5432",
+        "user": "dev_user",
+        "database": "execution_service",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "sslmode": "disable"
+        },
+        "readOnly": false
+    },
+    {
+        "id": 6,
+        "uid": "afof5zwhulerka",
+        "orgId": 1,
+        "name": "PostgreSQL-Final",
+        "type": "grafana-postgresql-datasource",
+        "typeName": "PostgreSQL",
+        "typeLogoUrl": "public/plugins/grafana-postgresql-datasource/img/postgresql_logo.svg",
+        "access": "proxy",
+        "url": "postgres.infrastructure:5432",
+        "user": "dev_user",
+        "database": "execution_service",
+        "basicAuth": false,
+        "isDefault": false,
+        "jsonData": {
+            "sslmode": "disable"
+        },
+        "readOnly": false
+    }
+]

@@ -1,0 +1,117 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Execution.Service", "src\Execution.Service\Execution.Service.csproj", "{DC222DFA-F70F-4485-B282-E4BEB13D0629}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketData.Replay", "src\market-data-replay\MarketData.Replay.csproj", "{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567891}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Execution.Service.Tests", "tests\execution-service-tests\Execution.Service.Tests.csproj", "{A548A5D9-C6DC-4EED-8454-20340597DAF1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketData.Replay.Tests", "tests\market-data-replay-tests\MarketData.Replay.Tests.csproj", "{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "infra", "infra", "{A7BA1D24-6B4A-483F-80B0-9BF98D9C6C2E}"
+	ProjectSection(SolutionItems) = preProject
+		infra\docker\docker-compose.infrastructure.yml = infra\docker\docker-compose.infrastructure.yml
+		infra\docker\docker-compose.yml = infra\docker\docker-compose.yml
+		infra\monitoring\loki-config-simple.yml = infra\monitoring\loki-config-simple.yml
+		infra\monitoring\promtail-config.yml = infra\monitoring\promtail-config.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "proto", "proto", "{8F16208D-83C5-4309-A464-4A350A99C6E7}"
+	ProjectSection(SolutionItems) = preProject
+		proto\execution.proto = proto\execution.proto
+		proto\gm_trading.proto = proto\gm_trading.proto
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Script", "Script", "{27E09F59-7D54-4814-AA88-D47E0A46255C}"
+	ProjectSection(SolutionItems) = preProject
+		scripts\test\core\helpers.py = scripts\test\core\helpers.py
+		scripts\test\core\minimal_test.py = scripts\test\core\minimal_test.py
+		scripts\test\core\smoke_test.py = scripts\test\core\smoke_test.py
+		scripts\test\core\test_backtest_e2e.py = scripts\test\core\test_backtest_e2e.py
+		scripts\test\launch_e2e.py = scripts\test\launch_e2e.py
+		scripts\test\run_unit_tests.py = scripts\test\run_unit_tests.py
+		scripts\test\smart_e2e.py = scripts\test\smart_e2e.py
+		scripts\test\test_gm_adapter.py = scripts\test\test_gm_adapter.py
+		scripts\test\test_paper_trading_e2e.py = scripts\test\test_paper_trading_e2e.py
+		scripts\test\test_strategy_trigger.py = scripts\test\test_strategy_trigger.py
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|x64.ActiveCfg = Debug|x64
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|x64.Build.0 = Debug|x64
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|x86.ActiveCfg = Debug|x86
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Debug|x86.Build.0 = Debug|x86
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|x64.ActiveCfg = Release|x64
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|x64.Build.0 = Release|x64
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|x86.ActiveCfg = Release|x86
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629}.Release|x86.Build.0 = Release|x86
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|x64.ActiveCfg = Debug|x64
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|x64.Build.0 = Debug|x64
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|x86.ActiveCfg = Debug|x86
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Debug|x86.Build.0 = Debug|x86
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|x64.ActiveCfg = Release|x64
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|x64.Build.0 = Release|x64
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|x86.ActiveCfg = Release|x86
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}.Release|x86.Build.0 = Release|x86
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|x64.Build.0 = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Debug|x86.Build.0 = Debug|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|x64.ActiveCfg = Release|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|x64.Build.0 = Release|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|x86.ActiveCfg = Release|Any CPU
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1}.Release|x86.Build.0 = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|x64.Build.0 = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Debug|x86.Build.0 = Debug|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|x64.ActiveCfg = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|x64.Build.0 = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|x86.ActiveCfg = Release|Any CPU
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{DC222DFA-F70F-4485-B282-E4BEB13D0629} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567891}
+		{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567891}
+		{A548A5D9-C6DC-4EED-8454-20340597DAF1} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{32B13FE3-B8F3-4973-B021-0EB7E48DB2AF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+	EndGlobalSection
+EndGlobal

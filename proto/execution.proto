@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package execution;
+
+// Execution service interface
+service Execution {
+    // Submit single order
+    rpc SubmitOrder(OrderRequest) returns (OrderResponse);
+
+    // Cancel order (added in P0.2)
+    rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+
+    // Query order status
+    rpc GetOrderStatus(OrderStatusRequest) returns (OrderStatusResponse);
+
+    // Query single position
+    rpc GetPosition(PositionRequest) returns (PositionResponse);
+
+    // Query all positions
+    rpc GetAllPositions(AllPositionsRequest) returns (AllPositionsResponse);
+
+    // Query account
+    rpc GetAccount(AccountRequest) returns (AccountResponse);
+
+    // Subscribe PnL updates
+    rpc SubscribePnLUpdates(PnLSubscribeRequest) returns (stream PnLUpdate);
+
+    // Subscribe order status updates (added in P1.2)
+    rpc SubscribeOrderUpdates(OrderUpdatesSubscribeRequest) returns (stream OrderUpdate);
+
+    // Market close cancel order: mark Pending/Partial DAY orders as Expired (added in P2.2)
+    rpc ExpireDayOrders(ExpireDayOrdersRequest) returns (ExpireDayOrdersResponse);
+}
+
+// Order submission
+message OrderRequest {
+    string session_id = 1;
+    string symbol = 2;
+    int32 side = 3;          // 0=Buy, 1=Sell
+    int32 type = 4;          // 0=Market, 1=Limit, 2=Stop, 3=StopLimit
+    double quantity = 5;
+    double price = 6;
+    string signal_id = 7;
+    string strategy_id = 8;
+    string trade_time = 9;   // Historical trade time (ISO8601 format) - CRITICAL for T+1 rule validation
+    int32 time_in_force = 10; // Added in P2.1: 0=Day, 1=IOC, 2=GTC, 3=FOK
+}
+
+message OrderResponse {
+    string order_id = 1;
+    int32 status = 2;        // 0=Pending, 1=Filled, 2=Partial, 3=Cancelled, 4=Rejected, 5=Expired
+    double filled_quantity = 3;
+    double fill_price = 4;
+    double commission = 5;
+    string filled_at = 6;    // ISO8601 datetime
+    string message = 7;
+    double remaining_quantity = 8; // Added in P0.4: remaining unfilled
+    int32 fill_count = 9;          // Added in P0.4: fill count for this order
+}
+
+// Cancel order (P0.2)
+message CancelOrderRequest {
+    string session_id = 1;
+    string order_id = 2;       // business order_id (client_order_id)
+}
+
+message CancelOrderResponse {
+    string order_id = 1;
+    int32 status = 2;           // Cancelled if success, original status if failed
+    double filled_quantity = 3; // filled quantity before cancel
+    string message = 4;
+}
+
+// Order status query
+message OrderStatusRequest {
+    string session_id = 1;
+    string order_id = 2;
+}
+
+message OrderStatusResponse {
+    bool exists = 1;
+    string order_id = 2;
+    int32 status = 3;            // 0=Pending, 1=Filled, 2=Partial, 3=Cancelled, 4=Rejected, 5=Expired
+    double filled_quantity = 4;
+    double fill_price = 5;
+    string filled_at = 6;
+    string message = 7;
+}
+
+// Position query
+message PositionRequest {
+    string session_id = 1;
+    string symbol = 2;
+}
+
+message PositionResponse {
+    string symbol = 1;
+    double quantity = 2;
+    double avg_price = 3;
+    double unrealized_pnl = 4;
+    double realized_pnl = 5;
+    double market_value = 6;
+    bool has_position = 7;  // flag indicating whether a position exists
+    string message = 8;
+}
+
+message AllPositionsRequest {
+    string session_id = 1;
+}
+
+message AllPositionsResponse {
+    repeated PositionResponse positions = 1;
+}
+
+// Account query
+message AccountRequest {
+    string session_id = 1;
+}
+
+message AccountResponse {
+    string session_id = 1;
+    double cash = 2;
+    double equity = 3;
+    double market_value = 4;
+    double total_pnl = 5;
+    int32 total_trades = 6;
+    double total_commission = 7;
+    double initial_capital = 8;
+    string message = 9;
+}
+
+// PnL subscription
+message PnLSubscribeRequest {
+    string session_id = 1;
+    int32 interval_ms = 2;
+}
+
+message PnLUpdate {
+    string timestamp = 1;
+    double total_pnl = 2;
+    double unrealized_pnl = 3;
+    double realized_pnl = 4;
+    double equity = 5;
+}
+
+message PnLUpdateResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// Order status update subscription (P1.2)
+message OrderUpdatesSubscribeRequest {
+    string session_id = 1;
+    repeated string order_ids = 2;  // empty = subscribe to all orders in session
+}
+
+message FillDetail {
+    double quantity = 1;
+    double price = 2;
+    string broker_fill_id = 3; // nullable
+}
+
+message OrderUpdate {
+    string session_id = 1;
+    string order_id = 2;
+    int32 status = 3;               // 0=Pending, 1=Filled, 2=Partial, 3=Cancelled, 4=Rejected, 5=Expired
+    double filled_quantity = 4;
+    double remaining_quantity = 5;
+    double avg_fill_price = 6;
+    FillDetail last_fill = 7;       // only attached on fill events
+    string message = 8;
+    string timestamp = 9;
+}
+
+// Market close cancel order request (P2.2)
+message ExpireDayOrdersRequest {
+    string session_id = 1;       // empty = all sessions
+    string trade_date = 2;       // ISO8601 date, defaults to today
+}
+
+message ExpireDayOrdersResponse {
+    int32 expired_count = 1;
+    repeated string expired_order_ids = 2;
+}

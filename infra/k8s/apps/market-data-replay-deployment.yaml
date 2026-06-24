@@ -1,0 +1,113 @@
+# MarketData.Replay Deployment for Kubernetes
+# Image rebuild: docker build -t docker-market-data-replay:latest src/market-data-replay/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-data-replay
+  namespace: trading-platform
+  labels:
+    app: market-data-replay
+    version: v1
+spec:
+  replicas: 1  # Historical replay service typically needs only a single instance
+  selector:
+    matchLabels:
+      app: market-data-replay
+  template:
+    metadata:
+      labels:
+        app: market-data-replay
+        version: v1
+    spec:
+      containers:
+      - name: market-data-replay
+        image: docker-market-data-replay:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+
+        env:
+        # ASP.NET environment
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+
+        # Database connection
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres.infrastructure;Port=5432;Database=dev;Username=dev_user;Password=dev_pass;Search Path=market_data,public"
+
+        # Kafka configuration
+        - name: Kafka__BootstrapServers
+          value: "kafka.infrastructure:9092"
+        - name: Kafka__MarketDataTopic
+          value: "market.data"
+        - name: Kafka__ControlTopic
+          value: "replay.control"
+
+        # Data path
+        - name: DataPath
+          value: "/data"
+
+        # Logging configuration
+        - name: LOG_PATH
+          value: "/var/log/services/market-data-replay"
+
+        # GM Token - temporarily using environment variable, production should use Secret
+        - name: GM__GmToken
+          value: ""
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+
+        # Health probes disabled (replay API does not expose HTTP /health endpoint)
+
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: logs
+          mountPath: /app/logs
+        - name: var-logs
+          mountPath: /var/log/services/market-data-replay
+
+      volumes:
+      - name: data
+        hostPath:
+          path: /mnt/d/TradingPlatform/data
+          type: DirectoryOrCreate
+      - name: logs
+        emptyDir: {}
+      - name: var-logs
+        hostPath:
+          path: /mnt/d/TradingPlatform/logs/market-data-replay
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+
+---
+# Service for MarketData.Replay
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-data-replay
+  namespace: trading-platform
+  labels:
+    app: market-data-replay
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30880
+    protocol: TCP
+    name: http
+  selector:
+    app: market-data-replay

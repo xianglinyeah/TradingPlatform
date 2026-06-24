@@ -1,0 +1,158 @@
+"""execution_adapter_gm entry point.
+
+Usage:
+    python main.py [config.yaml]
+
+Starts two things:
+  1. GM Strategy event loop on a daemon thread (blocks on gm.api.run())
+  2. gRPC server on the main thread (port 5005) — main thread blocks on
+     server.wait_for_termination()
+
+The gRPC servicer hands orders to the strategy thread via a queue, because
+the Python GM SDK only allows trading calls from the strategy thread.
+
+Note: the `gm` SDK bundles _pb2.py files generated with protoc 3.x. They
+require either protobuf<4 at runtime, or `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
+=python` to use the pure-Python parser. We set the env var here unconditionally
+so the same process can load both the gm SDK's protos and our own freshly
+generated `gm_trading_pb2.py` (built with newer protoc).
+"""
+from __future__ import annotations
+
+import os
+# MUST be set before any protobuf import. See module docstring.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
+import logging
+import sys
+import threading
+
+import grpc
+from concurrent import futures
+
+from config import load_config
+
+
+def _make_proto_importable() -> None:
+    proto_dir = os.path.join(os.path.dirname(__file__), "protos")
+    if proto_dir not in sys.path:
+        sys.path.insert(0, proto_dir)
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    config_path = argv[0] if argv else "config.yaml"
+    cfg = load_config(config_path)
+
+    from utils import logger as logger_setup
+    logger_setup.setup_logging(cfg.logging.dir, cfg.logging.level)
+    log = logging.getLogger("execution_adapter_gm")
+
+    log.info("=== execution-adapter-gm (Python) — config=%s ===", config_path)
+    if not cfg.gm.token:
+        log.error("GM_TOKEN not configured! Set gm.token in %s", config_path)
+        return 1
+
+    log.info("GM_TOKEN configured: %s***",
+             cfg.gm.token[: min(10, len(cfg.gm.token))])
+    log.info("Paper account: %s", cfg.gm.paper_account_id or "(none)")
+    log.info("Live account: %s", cfg.gm.live_account_id or "(none)")
+    log.info("gRPC listen: %s", cfg.grpc.listen)
+
+    _make_proto_importable()
+
+    # ---- Wire up GM strategy on a background thread ----
+    from gm.api import set_token, set_serv_addr, run, MODE_LIVE
+    from broker import strategy as gm_strategy
+
+    # The Python SDK must be told which account is the "default" for trades
+    # that don't pass account explicitly.
+    try:
+        from gm.api import set_account_id
+        default_account = cfg.gm.paper_account_id or cfg.gm.live_account_id
+        if default_account:
+            set_account_id(default_account)
+            log.info("GM default account set: %s", default_account)
+    except Exception as ex:
+        log.warning("set_account_id not available or failed: %s", ex)
+
+    set_token(cfg.gm.token)
+    if cfg.gm.address:
+        try:
+            set_serv_addr(cfg.gm.address)
+        except Exception as ex:
+            log.warning("set_serv_addr failed (using default): %s", ex)
+
+    gm_strategy.prepare(
+        account=cfg.gm.paper_account_id or cfg.gm.live_account_id,
+        strategy_id=cfg.gm.strategy_id,
+        poll_frequency_ms=cfg.schedule.poll_frequency_ms,
+        session_start=cfg.schedule.session_start,
+        session_end=cfg.schedule.session_end,
+    )
+
+    gm_error = {}
+
+    def _run_gm():
+        # GM SDK calls signal.signal() internally, which fails on non-main
+        # threads in Linux. Neutralize it before calling run().
+        import signal as _signal
+        _orig_signal = _signal.signal
+        _signal.signal = lambda *a, **kw: None
+        try:
+            log.info("Starting GM trading service event loop")
+            run(
+                strategy_id=cfg.gm.strategy_id,
+                filename=__file__,
+                mode=MODE_LIVE,
+                token=cfg.gm.token,
+            )
+        except Exception as ex:
+            log.exception("GM trading service event loop exception: %s", ex)
+            gm_error["err"] = ex
+
+    gm_thread = threading.Thread(target=_run_gm, name="gm-strategy", daemon=True)
+    gm_thread.start()
+
+    # Wait briefly so init() failures surface before we bind gRPC.
+    if not gm_strategy._initialized.wait(timeout=5.0):
+        log.warning("GM strategy init() did not signal within 5s; continuing")
+
+    if gm_error:
+        log.error("Aborting: GM strategy thread exited during startup")
+        return 1
+
+    # ---- Start gRPC server on the main thread ----
+    from grpc.servicer import GMTradingServicer
+
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=cfg.grpc.workers),
+        options=[
+            ("grpc.so_reuseport", 0),
+            ("grpc.max_send_message_length", 4 * 1024 * 1024),
+            ("grpc.max_receive_message_length", 4 * 1024 * 1024),
+        ],
+    )
+    pb_grpc = __import__("gm_trading_pb2_grpc")
+    pb_grpc.add_GMTradingServicer_to_server(
+        GMTradingServicer(default_timeout_seconds=cfg.order.default_timeout_seconds),
+        server,
+    )
+
+    server.add_insecure_port(cfg.grpc.listen)
+    server.start()
+    log.info("gRPC server listening on %s", cfg.grpc.listen)
+
+    try:
+        server.wait_for_termination()
+    except KeyboardInterrupt:
+        log.info("Interrupted by user, shutting down")
+        server.stop(grace=2.0)
+    finally:
+        log.info("execution_adapter_gm stopped")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

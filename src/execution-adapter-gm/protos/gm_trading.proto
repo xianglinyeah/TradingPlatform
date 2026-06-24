@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package gmtrading;
+
+// GM Quant trading service interface
+service GMTrading {
+    // Place order
+    rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+
+    // Cancel order
+    rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+
+    // Query account funds
+    rpc GetCash(GetCashRequest) returns (GetCashResponse);
+
+    // Query position
+    rpc GetPosition(GetPositionRequest) returns (GetPositionResponse);
+
+    // Query order
+    rpc GetOrders(GetOrdersRequest) returns (GetOrdersResponse);
+}
+
+// Place order request
+message PlaceOrderRequest {
+    string order_id = 1;
+    string symbol = 2;
+    int32 side = 3;          // 0=Buy, 1=Sell
+    int32 order_type = 4;    // 0=Market, 1=Limit, 2=Stop
+    double quantity = 5;
+    double price = 6;
+    string account_id = 7;
+    int32 time_in_force = 8; // P2.1 new: 0=Day, 1=IOC, 2=GTC, 3=FOK
+}
+
+// Place order response
+message PlaceOrderResponse {
+    bool success = 1;
+    string message = 2;
+    string order_id = 3;
+    int32 status = 4;         // 0=Pending, 1=Filled, 2=Rejected, 3=Cancelled, 4=Partial, 5=Expired
+    double filled_quantity = 5;
+    double fill_price = 6;
+    double commission = 7;
+    string filled_at = 8;    // ISO8601 datetime
+    int32 time_in_force = 9; // P2.1 new: 0=Day, 1=IOC, 2=GTC, 3=FOK
+}
+
+// Cancel order request
+message CancelOrderRequest {
+    string order_id = 1;
+    string account_id = 2;
+}
+
+// Cancel order response
+message CancelOrderResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// Query funds request
+message GetCashRequest {
+    string account_id = 1;
+}
+
+// Query funds response
+message GetCashResponse {
+    bool success = 1;
+    string message = 2;
+    repeated CashInfo cash_list = 3;
+}
+
+message CashInfo {
+    string account_id = 1;
+    double available = 2;      // Available funds
+    double total = 3;          // Total assets
+    double realized_pnl = 4;   // Realized P&L
+}
+
+// Query position request
+message GetPositionRequest {
+    string account_id = 1;
+}
+
+// Query position response
+message GetPositionResponse {
+    bool success = 1;
+    string message = 2;
+    repeated PositionInfo positions = 3;
+}
+
+message PositionInfo {
+    string symbol = 1;
+    double quantity = 2;      // Position quantity
+    double available = 3;     // Available quantity
+    double avg_price = 4;      // Average open price
+    double cost = 5;           // Cost
+    double unrealized_pnl = 6; // Unrealized P&L
+    double realized_pnl = 7;   // Realized P&L
+}
+
+// Query order request
+message GetOrdersRequest {
+    string account_id = 1;
+}
+
+// Query order response
+message GetOrdersResponse {
+    bool success = 1;
+    string message = 2;
+    repeated OrderInfo orders = 3;
+}
+
+message OrderInfo {
+    string order_id = 1;
+    string symbol = 2;
+    int32 side = 3;
+    int32 order_type = 4;
+    double quantity = 5;
+    double price = 6;
+    int32 status = 7;
+    double filled_quantity = 8;
+    double fill_price = 9;
+    string created_at = 10;
+    string updated_at = 11;
+}

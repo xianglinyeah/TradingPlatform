@@ -1,0 +1,6 @@
+gm==3.0.184
+# gm SDK pins protobuf<4.0 — keep grpcio-tools aligned with that constraint.
+grpcio>=1.49.0
+grpcio-tools>=1.49.0
+protobuf>=3.19.0,<4.0
+pyyaml>=6.0

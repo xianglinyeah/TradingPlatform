@@ -1,0 +1,77 @@
+# ExecutionService Deployment for Kubernetes
+# Image rebuild: docker build -t docker-execution-service:latest src/Execution.Service/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: trading-platform
+  labels:
+    app: execution-service
+    version: v1
+spec:
+  replicas: 1  # Simplified test configuration
+  selector:
+    matchLabels:
+      app: execution-service
+  template:
+    metadata:
+      labels:
+        app: execution-service
+        version: v1
+    spec:
+      containers:
+      - name: execution-service
+        image: docker-execution-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8084
+          name: grpc
+          protocol: TCP
+
+        env:
+        # GM Adapter configuration
+        - name: GMSettings__GrpcServerAddress
+          value: "http://execution-adapter-gm:5005"
+
+        # Database connection
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres.infrastructure;Port=5432;Database=dev;Username=dev_user;Password=dev_pass;Search Path=execution_service,public"
+
+        # ASP.NET environment
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:8084"
+
+        # Logging configuration
+        - name: LOG_PATH
+          value: "/var/log/services/execution-service"
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        # Health probes disabled (gRPC service does not expose HTTP /health endpoint)
+
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: var-logs
+          mountPath: /var/log/services/execution-service
+
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: var-logs
+        hostPath:
+          path: /mnt/d/TradingPlatform/logs/execution-service
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+
+# NOTE: Service definition is in execution-service-service.yaml (NodePort 30884)

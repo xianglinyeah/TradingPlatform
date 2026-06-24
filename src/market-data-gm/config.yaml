@@ -1,0 +1,20 @@
+# Token is loaded from env var GM_TOKEN (see config.py).
+# Set it in your shell: $env:GM_TOKEN = "<your token>"
+gm:
+  token: "${GM_TOKEN}"
+  address: "127.0.0.1:7001"
+  symbols:
+    - "SHSE.600000"
+    - "SHSE.600019"
+    - "SHSE.600519"
+    - "SHSE.601318"
+  frequency: "60s"
+kafka:
+  bootstrap_servers: "localhost:9092"
+  market_data_topic: "market.data"
+  control_topic: "replay.control"
+  client_id: "gm-market-data-realtime"
+session_id_prefix: "gm-realtime"
+logging:
+  level: "INFO"
+  dir: "logs/marketdata-gm"

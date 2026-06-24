@@ -1,0 +1,124 @@
+"""ClickHouse storage for k-line bars (clickhouse-connect HTTP client).
+
+Mirrors C# `ClickHouseStorageService`. Provides:
+- `get_last_bar_time(table, ts_code)` → last trade_time or None
+- `delete_range(table, ts_code, from, to)` (mutations_sync=2 for idempotency)
+- `insert_bars(table, bars, ts_code)`
+
+Tables: `kline_1min`, `kline_daily` in the configured database (default: market_data).
+
+Time handling: the C# side stores Beijing wall-clock instants labelled as UTC.
+We mirror that — `_strip_tz` strips tzinfo before sending to CH so values
+remain the wall-clock numbers (09:30 → 09:30 in the CH DateTime column).
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+import clickhouse_connect
+
+logger = logging.getLogger(__name__)
+
+
+TABLE_1MIN = "kline_1min"
+TABLE_DAILY = "kline_daily"
+
+INSERT_COLUMNS = [
+    "trade_time", "ts_code", "open", "close", "high", "low",
+    "volume", "amount", "adj_factor",
+]
+
+
+def _strip_tz(v):
+    """If v is a tz-aware datetime, return the same wall-clock as naive.
+    Required for ClickHouse DateTime columns (which are timezone-naive)."""
+    if v is None:
+        return None
+    if hasattr(v, "tzinfo") and v.tzinfo is not None:
+        return v.replace(tzinfo=None)
+    return v
+
+
+class ClickHouseStorage:
+    """ClickHouse client for k-line bar storage (insert, delete-range, last-bar lookup)."""
+
+    def __init__(self, host: str = "localhost", port: int = 32123,
+                 user: str = "dev_user", password: str = "dev_pass",
+                 database: str = "market_data"):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.database = database
+
+    def _client(self) -> "clickhouse_connect.driver.Client":
+        """Create a short-lived ClickHouse HTTP client."""
+        return clickhouse_connect.get_client(
+            host=self.host, port=self.port,
+            username=self.user, password=self.password,
+            database=self.database,
+        )
+
+    def _fq(self, table: str) -> str:
+        return f"{self.database}.{table}"
+
+    def get_last_bar_time(self, table: str, ts_code: str) -> Optional[datetime]:
+        sql = f"SELECT max(trade_time) FROM {self._fq(table)} WHERE ts_code = %(ts)s"
+        with self._client() as c:
+            res = c.query(sql, parameters={"ts": ts_code})
+        if not res.result_rows:
+            return None
+        val = res.result_rows[0][0]
+        if val is None:
+            return None
+        # clickhouse-connect may return datetime or pandas.Timestamp
+        if hasattr(val, "to_pydatetime"):
+            val = val.to_pydatetime()
+        return val
+
+    def delete_range(self, table: str, ts_code: str,
+                     from_dt: datetime, to_dt: datetime) -> None:
+        sql = (
+            f"ALTER TABLE {self._fq(table)} "
+            "DELETE WHERE ts_code = %(ts)s "
+            "AND trade_time >= %(from)s AND trade_time <= %(to)s "
+            "SETTINGS mutations_sync = 2"
+        )
+        with self._client() as c:
+            c.command(sql, parameters={
+                "ts": ts_code,
+                "from": _strip_tz(from_dt),
+                "to": _strip_tz(to_dt),
+            })
+        logger.info("CH deleted %s/%s range [%s, %s]", table, ts_code, from_dt, to_dt)
+
+    def insert_bars(self, table: str, bars: List[dict], ts_code: str) -> int:
+        """Insert bars into ClickHouse. Returns number of rows inserted."""
+        if not bars:
+            logger.info("CH insert skipped: %s/%s has 0 bars", table, ts_code)
+            return 0
+
+        def _f(b, k):
+            v = b.get(k)
+            return 0.0 if v is None else float(v)
+
+        rows = [
+            (
+                _strip_tz(b.get("bob") or b.get("eob")),
+                ts_code,
+                _f(b, "open"),
+                _f(b, "close"),
+                _f(b, "high"),
+                _f(b, "low"),
+                _f(b, "volume"),
+                _f(b, "amount"),
+                1.0,
+            )
+            for b in bars
+        ]
+        with self._client() as c:
+            c.insert(self._fq(table), rows, column_names=INSERT_COLUMNS)
+        logger.info("CH inserted %d rows into %s/%s", len(rows), table, ts_code)
+        return len(rows)

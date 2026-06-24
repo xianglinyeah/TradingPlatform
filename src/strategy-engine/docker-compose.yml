@@ -1,0 +1,35 @@
+services:
+  # strategy_engine - Live Trading (gRPC Executor only)
+  strategy-engine:
+    build: .
+    container_name: strategy-engine
+    environment:
+      # Kafka configuration - use host.docker.internal for Docker Desktop
+      KAFKA_BROKERS: host.docker.internal:9092
+      KAFKA_TOPIC: market.data
+      KAFKA_GROUP_ID: strategy_engine_live
+
+      # Execution service configuration (gRPC ONLY)
+      EXECUTION_SERVICE_ADDRESS: execution-service:8084
+      SESSION_ID: live-session-docker
+
+      # Logging
+      LOG_LEVEL: INFO
+      PYTHONUNBUFFERED: 1
+
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - D:/TradingPlatform/data:/app/data:ro
+
+    networks:
+      - backtesting-network
+
+    restart: unless-stopped
+
+    command: ["python", "main.py", "live", "--config", "config/live.yaml"]
+
+networks:
+  backtesting-network:
+    name: backtesting_backtesting-network
+    external: true

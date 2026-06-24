@@ -1,0 +1,79 @@
+# data-ingestion (Python) config file — format compatible with C# data_ingestion version
+
+# GM API configuration
+# Token is loaded from env var GM_TOKEN (see config.py).
+# Set it in your shell: $env:GM_TOKEN = "<your token>"
+gm:
+  token: "${GM_TOKEN}"
+  address: "127.0.0.1:7001"
+
+# Data storage configuration
+storage:
+  parquet_path: "D:/TradingPlatform/data/minute/1min"
+  connection_string: "Host=localhost;Port=5432;Username=dev_user;Password=dev_pass;Database=dev"
+
+# Data fetch scope configuration
+market_scope:
+  scope_type: "A_ALL"
+  custom_symbols: []
+
+# Data fetch configuration
+data:
+  frequency: "60s"
+  start_year: 2026
+  end_year: 2026
+
+# Processing configuration
+processing:
+  batch_size: 100
+  retry_count: 3
+  delay_between_requests: 500
+
+# Fundamentals backfill configuration (20-year A-share financial/valuation/market-cap)
+fundamentals:
+  start_date: "2005-01-01"
+  end_date: null
+  symbol_source: "CSI_ALL"
+  symbols: []
+  daily_dir: "D:/TradingPlatform/data/daily"
+  symbols_cache_file: "symbols_cache.txt"
+  request_delay_ms: 200
+  retry_count: 2
+  rpt_type: 0
+  data_type: 0
+
+# Fundamentals incremental update configuration (runs automatically every day, Pt multi-symbol single-day cross-sectional API)
+fundamentals_incremental:
+  daily_lookback_days: 3
+  quarterly_lookback_days: 7
+  safety_buffer_days: 2
+  max_gap_days: 14
+  symbol_source: "CSI_ALL"
+  symbols: []
+  daily_dir: "D:/TradingPlatform/data/daily"
+  symbols_cache_file: "symbols_cache.txt"
+  request_delay_ms: 200
+  retry_count: 2
+  rpt_type: 0
+  data_type: 0
+  symbol_filter: []
+
+# K-line incremental update configuration (runs on a daily schedule)
+kline_incremental:
+  minute_lookback_days: 7
+  daily_lookback_days: 10
+  safety_buffer_days: 1
+  max_gap_days: 30
+  symbol_source: "CSI_ALL"
+  symbols: []
+  daily_dir: "D:/TradingPlatform/data/daily"
+  minute_dir: "D:/TradingPlatform/data/minute/1min"
+  symbols_cache_file: "symbols_cache_kline.txt"
+  request_delay_ms: 200
+  retry_count: 2
+  clickhouse:
+    host: "localhost"
+    port: 8123
+    user: "dev_user"
+    password: "dev_pass"
+    database: "market_data"

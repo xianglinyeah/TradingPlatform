@@ -1,0 +1,161 @@
+# === 2 GM Python long-running services: ConfigMaps + Deployments ===
+# (data-ingestion is a CronJob, see data-ingestion-cronjob.yaml)
+#
+# Prerequisites: Create gm-secrets first:
+#   kubectl create secret generic gm-secrets -n trading-platform \
+#     --from-literal=token=<GM_TOKEN> \
+#     --from-literal=paper_account_id=<GM_PAPER_ACCOUNT_ID>
+
+# ============================================================================
+# 1. market-data-gm (real-time market data → Kafka)
+# ============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-data-gm-config
+  namespace: trading-platform
+data:
+  config.yaml: |
+    gm:
+      token: "placeholder"
+      address: "host.docker.internal:7001"
+      symbols:
+        - "SHSE.600000"
+        - "SHSE.600019"
+        - "SHSE.600519"
+        - "SHSE.601318"
+      frequency: "60s"
+    kafka:
+      bootstrap_servers: "kafka.infrastructure:9092"
+      market_data_topic: "market.data"
+      control_topic: "replay.control"
+      client_id: "gm-market-data-realtime"
+    session_id_prefix: "gm-realtime"
+    logging:
+      level: "INFO"
+      dir: "logs"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-data-gm
+  namespace: trading-platform
+  labels:
+    app: market-data-gm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-data-gm
+  template:
+    metadata:
+      labels:
+        app: market-data-gm
+    spec:
+      containers:
+      - name: market-data-gm
+        image: docker-market-data-gm:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-u", "main.py", "/config/config.yaml"]
+        env:
+        - name: GM_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gm-secrets
+              key: token
+        - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
+          value: "python"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        configMap:
+          name: market-data-gm-config
+      restartPolicy: Always
+---
+# Service for execution-adapter-gm (gRPC :5005)
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-adapter-gm
+  namespace: trading-platform
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5005
+    targetPort: 5005
+    name: grpc
+  selector:
+    app: execution-adapter-gm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: execution-adapter-gm-config
+  namespace: trading-platform
+data:
+  config.yaml: |
+    gm:
+      token: "placeholder"
+      address: "host.docker.internal:7001"
+      strategy_id: "gm-trading-adaptor"
+      paper_account_id: "placeholder"
+      live_account_id: ""
+    grpc:
+      listen: "0.0.0.0:5005"
+      workers: 16
+    schedule:
+      poll_frequency_ms: 200
+      session_start: "09:15"
+      session_end: "15:30"
+    order:
+      default_timeout_seconds: 30
+    logging:
+      level: "INFO"
+      dir: "logs"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-adapter-gm
+  namespace: trading-platform
+  labels:
+    app: execution-adapter-gm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-adapter-gm
+  template:
+    metadata:
+      labels:
+        app: execution-adapter-gm
+    spec:
+      containers:
+      - name: execution-adapter-gm
+        image: docker-execution-adapter-gm:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-u", "main.py", "/config/config.yaml"]
+        env:
+        - name: GM_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gm-secrets
+              key: token
+        - name: GM_PAPER_ACCOUNT_ID
+          valueFrom:
+            secretKeyRef:
+              name: gm-secrets
+              key: paper_account_id
+        - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
+          value: "python"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        configMap:
+          name: execution-adapter-gm-config
+      restartPolicy: Always

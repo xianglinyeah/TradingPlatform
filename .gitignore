@@ -1,0 +1,319 @@
+# =====================================
+# Build Outputs & Intermediate Files
+# =====================================
+other/
+# .NET / C#
+bin/
+obj/
+out/
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.meta
+*.obj
+*.o
+*.lib
+*.exp
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.sln.ide/
+*.vsidx
+*.vspscc
+*.vssscc
+project.lock.json
+project.fragment.lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+env/
+.venv/
+*.log
+*.pot
+*.mo
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+build-error.log
+
+# =====================================
+# IDE & Editor Files
+# =====================================
+
+# Visual Studio
+.vs/
+*.vsidx
+*.vspscc
+*.vssscc
+
+# JetBrains Rider/IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+/out/
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# =====================================
+# Sensitive Configuration Files
+# =====================================
+
+# Environment files
+.env
+*.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# User-specific app configs
+appsettings.Production.json
+appsettings.Staging.json
+appsettings.Development.json
+appsettings.*.json
+!appsettings.example.json
+
+# Secrets & certificates
+*.pem
+*.key
+*.cert
+secrets/
+credentials.json
+*password*
+*secret*
+
+# =====================================
+# Logs & Data Files
+# =====================================
+
+# Log files
+logs/
+*.log
+Log/
+log/
+*.log.*
+*.log.[1-9]
+
+# Runtime generated files (caches, pids, exported dashboards)
+symbols_cache*.txt
+infra_k8s_pids.txt
+csi300_dash.json
+*.pid
+
+# Data directories (user data should not be in git)
+data/
+Data/
+D:\BackTesting\
+D:\Data\
+*.backup
+*.bak
+
+# Specific data files
+*.parquet
+*.h5
+*.hdf5
+*.csv
+*.sqlite
+*.sqlite3
+*.db
+*.mdb
+*.accdb
+
+# =====================================
+# Docker & Container Files
+# =====================================
+
+# Docker volumes
+loki-data/
+grafana-data/
+postgres-data/
+docker-volumes/
+
+# Docker override configs
+docker-compose.override.yml
+
+# =====================================
+# Kubernetes Files
+# =====================================
+
+# Generated K8s files
+*kustomization/
+*kubeconfig.yaml
+
+# =====================================
+# Test Results & Coverage
+# =====================================
+
+TestResults/
+*.coverage
+*.coveragexml
+coverage.xml
+nunit_*.xml
+*.trx
+xunit/
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# =====================================
+# Package Manager Files
+# =====================================
+
+# NuGet
+packages/
+.nuget/
+
+# Python local packages (offline deployment dependencies)
+**/local-packages/
+**/linux-wheels/
+
+# Node.js (if any frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =====================================
+# Jupyter & Notebooks
+# =====================================
+
+.ipynb_checkpoints
+*.ipynb
+
+# Model files (large binary files)
+*.pkl
+*.pickle
+*.model
+*.weights
+
+# =====================================
+# Temporary & Cache Files
+# =====================================
+
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+*.swp
+*.swo
+*~
+.nfs*
+
+# OS-specific temp files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =====================================
+# Archive & Backup Files
+# =====================================
+
+archive/
+Archive/
+backups/
+Backups/
+*.old
+*.backup
+*.bak
+*.zip
+
+# =====================================
+# Documentation Build
+# =====================================
+
+docs/_build/
+site/
+docs/
+
+# =====================================
+# Crash Dumps & Debug Files
+# =====================================
+
+*.dmp
+*.mdmp
+stackdump.*
+[DbgTalk]
+DbgTalk.exe
+
+# ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# =====================================
+# Git & GitHub
+# =====================================
+
+# GitHub specific
+.github/FUNDING.yml
+
+# =====================================
+# Project Specific
+# =====================================
+
+# Keep directory structure but ignore content
+/data/*
+!/data/.gitkeep
+/logs/*
+!/logs/.gitkeep
+
+# Research notebooks checkpoints
+*.ipynb_checkpoints/
+
+# =====================================
+# IMPORTANT NOTES
+# =====================================
+
+# 1. The archive/ directory contains migrated configs and should be in version control
+# 2. But exclude runtime-generated files from archive/ subdirectories
+# 3. Keep .gitignore file itself under version control
+# 4. Use `git add -f` to force-add specific files if needed
+# 5. Large data files and logs should never be in git
+
+

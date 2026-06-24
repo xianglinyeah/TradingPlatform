@@ -1,0 +1,116 @@
+# data-ingestion CronJob — daily incremental fetch of fundamentals + kline
+#
+# Runs at 01:00 Beijing time (17:00 UTC) every day.
+# Execution order: fundamentals first (~13 min), then kline (~5-15 hours).
+# If fundamentals fails, kline is skipped and the pod restarts (retry).
+#
+# Prerequisites:
+#   kubectl create secret generic gm-secrets -n trading-platform \
+#     --from-literal=token=<GM_TOKEN> \
+#     --from-literal=paper_account_id=<GM_PAPER_ACCOUNT_ID>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-ingestion-config
+  namespace: trading-platform
+data:
+  config.yaml: |
+    gm:
+      token: "placeholder"
+      address: "host.docker.internal:7001"
+    storage:
+      parquet_path: "/data/minute/1min"
+      connection_string: "Host=postgres.infrastructure;Port=5432;Username=dev_user;Password=dev_pass;Database=dev"
+    market_scope:
+      scope_type: "A_ALL"
+      custom_symbols: []
+    data:
+      frequency: "60s"
+      start_year: 2026
+      end_year: 2026
+    processing:
+      batch_size: 100
+      retry_count: 3
+      delay_between_requests: 500
+    fundamentals_incremental:
+      daily_lookback_days: 3
+      quarterly_lookback_days: 7
+      safety_buffer_days: 2
+      max_gap_days: 14
+      symbol_source: "CSI_ALL"
+      symbols: []
+      daily_dir: "/data/daily"
+      symbols_cache_file: "symbols_cache.txt"
+      request_delay_ms: 200
+      retry_count: 2
+      rpt_type: 0
+      data_type: 0
+      symbol_filter: []
+    kline_incremental:
+      minute_lookback_days: 7
+      daily_lookback_days: 10
+      safety_buffer_days: 1
+      max_gap_days: 30
+      symbol_source: "CSI_ALL"
+      symbols: []
+      daily_dir: "/data/daily"
+      minute_dir: "/data/minute/1min"
+      symbols_cache_file: "symbols_cache_kline.txt"
+      request_delay_ms: 200
+      retry_count: 2
+      clickhouse:
+        host: "clickhouse.infrastructure"
+        port: 8123
+        user: "dev_user"
+        password: "dev_pass"
+        database: "market_data"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-ingestion
+  namespace: trading-platform
+spec:
+  schedule: "0 17 * * *"          # 17:00 UTC = 01:00 Beijing
+  concurrencyPolicy: Forbid        # Don't overlap runs (kline takes hours)
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 86400  # Max 24 hours per run
+      template:
+        spec:
+          containers:
+          - name: data-ingestion
+            image: docker-data-ingestion:latest
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/bash", "-c"]
+            args:
+              - |
+                echo "[CRONJOB] Starting fundamentals_incremental at $(date)"
+                python -u main.py /config/config.yaml --mode=fundamentals_incremental && \
+                echo "[CRONJOB] Starting kline_incremental at $(date)" && \
+                python -u main.py /config/config.yaml --mode=kline_incremental && \
+                echo "[CRONJOB] All done at $(date)"
+            env:
+            - name: GM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gm-secrets
+                  key: token
+            volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /data
+          volumes:
+          - name: config
+            configMap:
+              name: data-ingestion-config
+          - name: data
+            hostPath:
+              path: /mnt/d/TradingPlatform/data
+              type: DirectoryOrCreate
+          restartPolicy: OnFailure

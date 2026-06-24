@@ -1,0 +1,6 @@
+gm==3.0.184
+pyarrow>=14.0.0
+psycopg2-binary>=2.9.0
+clickhouse-connect>=0.7.0
+pyyaml>=6.0
+pandas>=2.0.0

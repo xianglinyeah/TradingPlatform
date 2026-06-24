@@ -1,0 +1,61 @@
+# Version control
+.git/
+.gitignore
+.github/
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+*.DotSettings.user
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# .NET
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# Project data (never copy into images)
+data/
+logs/
+*.parquet
+*.log
+*.sqlite*
+*.db
+
+# Secrets (never bake into images)
+.env
+*.env
+*.pem
+*.key
+
+# Documentation
+docs/
+*.md
+README.md
+
+# Scripts and configs not needed in image
+scripts/
+infra/
+archive/
+
+# OS files
+.DS_Store
+Thumbs.db

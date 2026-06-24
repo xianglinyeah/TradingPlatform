@@ -1,0 +1,52 @@
+# Ingress - Expose HTTP services via Traefik
+#
+# Browser access:
+#   http://grafana.127.0.0.1.nip.io    -> Grafana (admin/admin)
+#   http://kafka-ui.127.0.0.1.nip.io   -> Kafka UI
+#
+# Why use nip.io:
+#   nip.io is a public DNS wildcard service that automatically resolves <IP>.nip.io to <IP>.
+#   For example grafana.127.0.0.1.nip.io -> 127.0.0.1.
+#   This avoids modifying the Windows hosts file and can pass through VPN (xray/v2rayN)
+#   DNS interception - xray forwards queries to upstream recursive DNS, nip.io responds normally.
+#
+# Why not use .tp.test before:
+#   v2rayN/xray intercepts all DNS queries on 0.0.0.0:53, its own DNS resolver
+#   does not read the Windows hosts file, causing hosts entries to be ineffective.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: infrastructure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kafka-ui-ingress
+  namespace: infrastructure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: kafka-ui.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kafka-ui
+                port:
+                  number: 8080
