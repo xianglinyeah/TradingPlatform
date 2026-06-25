@@ -167,6 +167,7 @@ loki-data/
 grafana-data/
 postgres-data/
 docker-volumes/
+docker-images/
 
 # Docker override configs
 docker-compose.override.yml

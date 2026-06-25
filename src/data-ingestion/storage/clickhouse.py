@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import clickhouse_connect
 
@@ -122,3 +122,80 @@ class ClickHouseStorage:
             c.insert(self._fq(table), rows, column_names=INSERT_COLUMNS)
         logger.info("CH inserted %d rows into %s/%s", len(rows), table, ts_code)
         return len(rows)
+
+    def delete_ranges_batch(self, table: str,
+                            ranges: List[tuple]) -> int:
+        """Delete multiple (ts_code, from_dt, to_dt) ranges in ONE ALTER TABLE.
+
+        Combining N ranges into one mutation is dramatically faster than N
+        separate `ALTER TABLE ... DELETE` calls because ClickHouse applies
+        each mutation as a background job (constant overhead per mutation).
+
+        Args:
+            ranges: list of (ts_code, from_dt, to_dt)
+
+        Returns number of ranges included.
+        """
+        if not ranges:
+            return 0
+
+        import re
+        ts_code_re = re.compile(r"^\d{6}\.[A-Z]{2}$")
+        or_clauses = []
+        for ts_code, from_dt, to_dt in ranges:
+            if not ts_code_re.match(ts_code):
+                raise ValueError(f"invalid ts_code format: {ts_code!r}")
+            from_str = _strip_tz(from_dt).strftime("%Y-%m-%d %H:%M:%S")
+            to_str = _strip_tz(to_dt).strftime("%Y-%m-%d %H:%M:%S")
+            or_clauses.append(
+                f"(ts_code = '{ts_code}' "
+                f"AND trade_time >= '{from_str}' "
+                f"AND trade_time <= '{to_str}')"
+            )
+
+        sql = (
+            f"ALTER TABLE {self._fq(table)} "
+            f"DELETE WHERE {' OR '.join(or_clauses)} "
+            "SETTINGS mutations_sync = 2"
+        )
+        with self._client() as c:
+            c.command(sql)
+        logger.info("CH batch deleted %d ranges from %s", len(ranges), table)
+        return len(ranges)
+
+    def insert_bars_batch(self, table: str,
+                          bars_by_tscode: dict) -> int:
+        """Insert bars for multiple ts_codes in ONE INSERT call.
+
+        Args:
+            bars_by_tscode: {ts_code: [bar_dicts, ...]}
+
+        Returns total rows inserted.
+        """
+        def _f(b, k):
+            v = b.get(k)
+            return 0.0 if v is None else float(v)
+
+        all_rows = []
+        for ts_code, bars in bars_by_tscode.items():
+            for b in bars:
+                all_rows.append((
+                    _strip_tz(b.get("bob") or b.get("eob")),
+                    ts_code,
+                    _f(b, "open"),
+                    _f(b, "close"),
+                    _f(b, "high"),
+                    _f(b, "low"),
+                    _f(b, "volume"),
+                    _f(b, "amount"),
+                    1.0,
+                ))
+
+        if not all_rows:
+            return 0
+
+        with self._client() as c:
+            c.insert(self._fq(table), all_rows, column_names=INSERT_COLUMNS)
+        logger.info("CH batch inserted %d rows into %s (%d symbols)",
+                    len(all_rows), table, len(bars_by_tscode))
+        return len(all_rows)

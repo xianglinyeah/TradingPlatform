@@ -89,6 +89,62 @@ def _normalize_bar(row: dict) -> dict:
     return out
 
 
+def history_bars_batch(
+    symbols: List[str],
+    frequency: str,
+    start: datetime,
+    end: datetime,
+) -> dict:
+    """Fetch historical bars for multiple symbols in ONE GM call.
+
+    Returns a dict {symbol: [bar_dicts]} keyed by GM symbol (e.g. 'SHSE.600000').
+    Symbols that returned no data (suspended/delisted/pre-IPO) are absent.
+
+    Auto-halves the batch on status 1029 ('query result too large').
+
+    Mirrors `history_bars` but batches the GM `history()` call. The GM SDK
+    accepts `symbol: str|List` natively (see query.py:history).
+    """
+    if not symbols:
+        return {}
+
+    sdk = _sdk()
+    start_str = start.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = end.strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        df = sdk.history(
+            symbol=symbols,
+            frequency=frequency,
+            start_time=start_str,
+            end_time=end_str,
+            adjust=sdk.ADJUST_NONE,
+            df=True,
+        )
+    except Exception as ex:
+        msg = str(ex)
+        # status 1029 = "query result too large" — halve and retry recursively
+        if "1029" in msg and len(symbols) > 1:
+            mid = len(symbols) // 2
+            logger.info(
+                "Batch of %d too large (1029); splitting into %d + %d",
+                len(symbols), mid, len(symbols) - mid,
+            )
+            left = history_bars_batch(symbols[:mid], frequency, start, end)
+            right = history_bars_batch(symbols[mid:], frequency, start, end)
+            left.update(right)
+            return left
+        raise
+
+    if df is None or len(df) == 0 or "symbol" not in df.columns:
+        return {}
+
+    result: dict[str, List[dict]] = {}
+    for symbol, group in df.groupby("symbol"):
+        result[symbol] = [_normalize_bar(r) for r in group.to_dict("records")]
+    return result
+
+
 # ============================================================
 #  Fundamentals — Pt (multi-symbol, single-day cross-section)
 # ============================================================

@@ -33,24 +33,24 @@ data:
     processing:
       batch_size: 100
       retry_count: 3
-      delay_between_requests: 500
+      delay_between_requests: 0
     fundamentals_incremental:
       daily_lookback_days: 3
-      quarterly_lookback_days: 7
+      quarterly_lookback_days: 3
       safety_buffer_days: 2
       max_gap_days: 14
       symbol_source: "CSI_ALL"
       symbols: []
       daily_dir: "/data/daily"
       symbols_cache_file: "symbols_cache.txt"
-      request_delay_ms: 200
+      request_delay_ms: 0
       retry_count: 2
       rpt_type: 0
       data_type: 0
       symbol_filter: []
     kline_incremental:
-      minute_lookback_days: 7
-      daily_lookback_days: 10
+      minute_lookback_days: 3
+      daily_lookback_days: 3
       safety_buffer_days: 1
       max_gap_days: 30
       symbol_source: "CSI_ALL"
@@ -58,7 +58,7 @@ data:
       daily_dir: "/data/daily"
       minute_dir: "/data/minute/1min"
       symbols_cache_file: "symbols_cache_kline.txt"
-      request_delay_ms: 200
+      request_delay_ms: 0
       retry_count: 2
       clickhouse:
         host: "clickhouse.infrastructure"
@@ -85,7 +85,7 @@ spec:
           containers:
           - name: data-ingestion
             image: docker-data-ingestion:latest
-            imagePullPolicy: IfNotPresent
+            imagePullPolicy: Always
             command: ["/bin/bash", "-c"]
             args:
               - |
