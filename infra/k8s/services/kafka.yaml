@@ -59,6 +59,14 @@ spec:
           value: "1"
         - name: KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS
           value: "10"
+        # Write logs to the mounted PVC path (default /tmp/kafka-logs is ephemeral!)
+        - name: KAFKA_LOG_DIRS
+          value: "/var/lib/kafka/data/kafka-logs"
+        # Keep messages for 3 days only (default was 168h = 7d)
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "72"
+        - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
+          value: "300000"
         volumeMounts:
         - name: kafka-storage
           mountPath: /var/lib/kafka/data
