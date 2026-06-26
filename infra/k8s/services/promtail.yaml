@@ -74,11 +74,13 @@ data:
       filename: /tmp/positions.yaml
 
     scrape_configs:
-      # Discover all pods in the cluster via Kubernetes API
       - job_name: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
+          # Export job_name as a label so Grafana dashboard queries work.
+          - target_label: job
+            replacement: kubernetes-pods
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
           - source_labels: [__meta_kubernetes_pod_name]
@@ -89,6 +91,9 @@ data:
           - source_labels: [__meta_kubernetes_namespace]
             regex: "(trading-platform|infrastructure)"
             action: keep
-          # Set the log file path pattern (k3s/containerd format)
-          - target_label: __path__
-            replacement: /var/log/pods/*/*/*.log
+          # Scope __path__ to THIS pod only (by uid), so each Promtail target
+          # only tails its own pod's logs — not every pod on the node.
+          - source_labels: [__meta_kubernetes_pod_uid]
+            target_label: __path__
+            regex: "(.+)"
+            replacement: /var/log/pods/*_${1}/*/*.log
