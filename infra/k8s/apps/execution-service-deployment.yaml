@@ -37,9 +37,13 @@ spec:
         - name: ConnectionStrings__DefaultConnection
           value: "Host=postgres.infrastructure;Port=5432;Database=dev;Username=dev_user;Password=dev_pass;Search Path=execution_service,public"
 
-        # ASP.NET environment
+        # ASP.NET environment - read from env-selector ConfigMap so dev.py
+        # can switch between Production and E2E without editing this file.
         - name: ASPNETCORE_ENVIRONMENT
-          value: "Production"
+          valueFrom:
+            configMapKeyRef:
+              name: env-selector
+              key: mode
         - name: ASPNETCORE_URLS
           value: "http://+:8084"
 

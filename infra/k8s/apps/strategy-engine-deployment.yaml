@@ -24,8 +24,9 @@ spec:
         image: docker-strategy-engine:latest
         imagePullPolicy: IfNotPresent
 
-        # Run the real main.py
-        command: ["python", "main.py", "live", "--config", "config/e2e.yaml"]
+        # STRATEGY_CONFIG is read from env-selector (live.yaml / e2e.yaml).
+        command: ["/bin/sh", "-c"]
+        args: ["exec python main.py live --config config/$STRATEGY_CONFIG"]
 
         ports:
         - containerPort: 8080
@@ -46,6 +47,13 @@ spec:
           value: "execution-service:8084"
         - name: SESSION_ID
           value: "live-session-k8s"
+
+        # Strategy config file - read from env-selector (live.yaml / e2e.yaml).
+        - name: STRATEGY_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: env-selector
+              key: strategy_config
 
         # Logging
         - name: LOG_LEVEL

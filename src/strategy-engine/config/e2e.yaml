@@ -1,6 +1,10 @@
-# strategy_engine Local Live Trading Configuration
-# For local development debugging and integration testing
-# Can also be used for unit testing (needs to support both live and research modes)
+# Strategy engine E2E / smoke-test configuration.
+#
+# This file is intentionally minimal: it lists ONLY the strategies the smoke
+# test relies on. Adding new strategies to live.yaml does NOT require updating
+# this file. Smoke-test trade-count assertions assume EMA-only behavior.
+#
+# Switch into this config via:  py dev.py switch e2e   (or `py dev.py test-smoke`)
 
 mode: live
 
@@ -12,14 +16,13 @@ start_date: "20230101"
 end_date: "20230115"
 
 # Kafka configuration (for live mode)
-# In K8s environment use kafka.infrastructure:9092
 kafka_brokers: kafka.infrastructure:9092
 kafka_topic: market.data
 kafka_group_id: strategy_engine_e2e
 
-# Multi-strategy configuration
+# E2E strategies — only EMA. Do NOT add other strategies here; keep this file
+# minimal so smoke-test assertions remain stable as live.yaml grows.
 strategies:
-  # Strategy 1: MA main strategy - trades Shanghai Pudong Development Bank
   - name: ma_main
     class: MovingAverageStrategy
     enabled: true
@@ -33,17 +36,7 @@ strategies:
       quantity: 100
       max_position: 1000
 
-  # Strategy 2: BuyEveryBar - test strategy that buys on every minute bar
-  - name: test_buy_every_bar
-    class: BuyEveryBarStrategy
-    enabled: true
-    symbols:
-      - 600000.SH
-    params:
-      quantity: 100
-      max_position: 1000
-
-# Execution configuration (locally connect to Docker ExecutionService)
+# Execution configuration
 executor: grpc
 execution_service_address: execution-service:8084
 session_id: live-session-e2e

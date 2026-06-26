@@ -16,6 +16,154 @@ class DevCommand:
     def __init__(self):
         self.project_root = Path.cwd()
 
+    # ------------------------------------------------------------------
+    # Environment switching (Production / E2E) via env-selector ConfigMap.
+    # Drives ASPNETCORE_ENVIRONMENT (execution-service) and STRATEGY_CONFIG
+    # (strategy-engine). See infra/k8s/apps/env-selector.yaml.
+    # ------------------------------------------------------------------
+
+    NAMESPACE = "trading-platform"
+    SERVICES = {
+        "execution-service":      {"src": "src/Execution.Service",    "dotnet": True},
+        "market-data-replay":     {"src": "src/market-data-replay",   "dotnet": True},
+        "strategy-engine":        {"src": "src/strategy-engine",      "dotnet": False},
+        "market-data-gm":         {"src": "src/market-data-gm",       "dotnet": False},
+        "execution-adapter-gm":   {"src": "src/execution-adapter-gm", "dotnet": False},
+        "data-ingestion":         {"src": "src/data-ingestion",       "dotnet": False},
+    }
+
+    def _switch_env(self, mode: str) -> bool:
+        """Patch env-selector ConfigMap. mode ∈ {'Production', 'E2E'}."""
+        if mode not in ("Production", "E2E"):
+            print(f"[ERROR] unknown mode: {mode!r}")
+            return False
+        strategy_config = "live.yaml" if mode == "Production" else "e2e.yaml"
+        patch = (
+            f'{{"data":{{"mode":"{mode}",'
+            f'"strategy_config":"{strategy_config}"}}}}'
+        )
+        try:
+            r = subprocess.run(
+                ["kubectl", "patch", "configmap", "env-selector",
+                 "-n", self.NAMESPACE, "-p", patch],
+                cwd=self.project_root, capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode == 0:
+                print(f"[ENV] env-selector -> {mode} (strategy_config={strategy_config})")
+                return True
+            print(f"[FAIL] patch failed: {r.stderr}")
+            return False
+        except Exception as e:
+            print(f"[ERROR] patch exception: {e}")
+            return False
+
+    def _build_service(self, service: str) -> bool:
+        """Build a service's Docker image (and dotnet publish if needed)."""
+        cfg = self.SERVICES.get(service)
+        if cfg is None:
+            print(f"[ERROR] unknown service: {service!r}")
+            return False
+        src = cfg["src"]
+        print(f"[BUILD] {service} ({src})")
+        try:
+            if cfg["dotnet"]:
+                r = subprocess.run(
+                    ["dotnet", "publish", src, "-c", "Release",
+                     "-o", f"{src}/bin/Release/net8.0/publish"],
+                    cwd=self.project_root,
+                )
+                if r.returncode != 0:
+                    print(f"[FAIL] dotnet publish for {service}")
+                    return False
+            r = subprocess.run(
+                ["docker", "build", "-t", f"docker-{service}:latest", src],
+                cwd=self.project_root,
+            )
+            return r.returncode == 0
+        except Exception as e:
+            print(f"[ERROR] build exception: {e}")
+            return False
+
+    def _restart_deployments(self, *deployments: str) -> bool:
+        """Rollout restart and wait for each deployment."""
+        for d in deployments:
+            subprocess.run(
+                ["kubectl", "rollout", "restart", f"deployment/{d}",
+                 "-n", self.NAMESPACE],
+                cwd=self.project_root,
+            )
+        ok = True
+        for d in deployments:
+            print(f"[ROLL] waiting for {d}...")
+            r = subprocess.run(
+                ["kubectl", "rollout", "status", f"deployment/{d}",
+                 "-n", self.NAMESPACE, "--timeout=180s"],
+                cwd=self.project_root,
+            )
+            if r.returncode != 0:
+                print(f"[FAIL] {d} rollout failed")
+                ok = False
+        return ok
+
+    def _clear_kafka_topic(self, topic: str) -> bool:
+        """Delete and recreate a Kafka topic to clear all messages."""
+        print(f"[KAFKA] Clearing topic '{topic}'...")
+        try:
+            # Delete (async in Kafka, takes a few seconds)
+            subprocess.run(
+                ["kubectl", "exec", "-n", "infrastructure", "kafka-0", "--",
+                 "bash", "-c",
+                 f"/opt/kafka/bin/kafka-topics.sh --bootstrap-server "
+                 f"kafka.infrastructure:9092 --delete --topic {topic}"],
+                cwd=self.project_root, capture_output=True, text=True, timeout=30,
+            )
+            time.sleep(3)
+            # Recreate with 1 partition (auto-create would also work but
+            # this is explicit)
+            subprocess.run(
+                ["kubectl", "exec", "-n", "infrastructure", "kafka-0", "--",
+                 "bash", "-c",
+                 f"/opt/kafka/bin/kafka-topics.sh --bootstrap-server "
+                 f"kafka.infrastructure:9092 --create --topic {topic} "
+                 f"--partitions 1 --replication-factor 1"],
+                cwd=self.project_root, capture_output=True, text=True, timeout=30,
+            )
+            print(f"[KAFKA] topic '{topic}' cleared.")
+            return True
+        except Exception as e:
+            print(f"[KAFKA] clear failed (non-fatal): {e}")
+            return False
+
+    def switch_env(self, mode: str) -> bool:
+        """Top-level: switch env-selector and restart the affected services."""
+        target = "Production" if mode == "prod" else "E2E" if mode == "e2e" else mode
+        if not self._switch_env(target):
+            return False
+        return self._restart_deployments("strategy-engine", "execution-service")
+
+    def build_one(self, service: str) -> bool:
+        return self._build_service(service)
+
+    def build_all(self) -> bool:
+        ok = True
+        for svc in self.SERVICES:
+            if not self._build_service(svc):
+                ok = False
+        return ok
+
+    def deploy_one(self, service: str) -> bool:
+        if service not in self.SERVICES:
+            print(f"[ERROR] unknown service: {service!r}")
+            return False
+        self._build_service(service)
+        return self._restart_deployments(service)
+
+    def deploy_all(self) -> bool:
+        """Build all images, then restart all deployments."""
+        if not self.build_all():
+            print("[WARN] some builds failed, continuing with deploy anyway")
+        return self._restart_deployments(*self.SERVICES.keys())
+
     def print_help(self):
         """Show help information"""
         print("="*60)
@@ -24,7 +172,7 @@ class DevCommand:
         print()
         print("[START] Development environment:")
         print("  py dev.py start-all  - Start all services (infrastructure + apps)")
-        print("  py dev.py start      - Start K8s application services (auto port-forward)")
+        print("  py dev.py start      - Start K8s application services")
         print("  py dev.py stop       - Stop K8s application services (keep infrastructure)")
         print("  py dev.py stop-all   - Stop all services (including infrastructure)")
         print("  py dev.py restart    - Restart application services")
@@ -43,9 +191,17 @@ class DevCommand:
         print()
         print("[TEST] Testing:")
         print("  py dev.py test       - Quick test (30 seconds)")
-        print("  py dev.py test-smoke - Smoke test (1-2 minutes)")
+        print("  py dev.py test-smoke - Full E2E: switch E2E -> build -> deploy -> smoke test -> restore")
         print("  py dev.py test-full  - Full test (5-8 minutes)")
         print("  py dev.py test-unit  - Unit tests (strategy/execution/replay)")
+        print()
+        print("[ENV] Environment switching (Production / E2E):")
+        print("  py dev.py switch prod  - Switch env-selector to Production")
+        print("  py dev.py switch e2e   - Switch env-selector to E2E")
+        print("  py dev.py build        - Build ALL service Docker images")
+        print("  py dev.py build <svc>  - Build one service Docker image")
+        print("  py dev.py deploy       - Build all + restart all deployments")
+        print("  py dev.py deploy <svc> - Build one + restart one deployment")
         print()
         print("[LOG] Log management:")
         print("  py dev.py watch-logs      - Tail all service logs in real time")
@@ -61,10 +217,6 @@ class DevCommand:
         print("[K8S] Advanced options:")
         print("  py dev.py k8s-services    - Show K8s services and Pod status")
         print("  py dev.py k8s-scale       - Scale service replicas")
-        print("  py dev.py k8s-pf-status   - Show port-forward status (debug)")
-        print("  py dev.py k8s-pf-start    - Start port-forward manually")
-        print("  py dev.py k8s-pf-stop     - Stop port-forward manually")
-        print("  py dev.py k8s-pf-restart  - Restart port-forward")
         print()
         print("[OTHER] Other:")
         print("  py dev.py check      - Check environment status")
@@ -104,8 +256,8 @@ class DevCommand:
             print(f"[ERROR] Exception: {e}")
             return False
 
-    def start_k8s_services(self, with_port_forward=True):
-        """Start K8s application services (auto-manages port-forward)"""
+    def start_k8s_services(self):
+        """Start K8s application services"""
         print("[K8S] Starting application services...")
 
         # K8s service list
@@ -175,49 +327,11 @@ class DevCommand:
         if started:
             print(f"[OK] Started: {', '.join(started)}")
 
-        # Auto-start port-forward
-        if with_port_forward and len(started) > 0:
-            print("[PORT-FORWARD] Auto-starting port forwarding...")
-            time.sleep(3)  # Wait for services to be ready
-            self.start_port_forward_automation()
-
         return len(started) > 0
 
-    def start_port_forward_automation(self):
-        """Auto-start port-forward (internal use)"""
-        try:
-            result = subprocess.run(
-                ["python", "scripts/dev/k8s_port_forward.py", "start"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode == 0:
-                # Show only key information
-                if "[SUMMARY]" in result.stdout:
-                    summary_line = [line for line in result.stdout.split('\n') if '[SUMMARY]' in line]
-                    if summary_line:
-                        print(f"[PORT-FORWARD] {summary_line[0].strip()}")
-                else:
-                    print("[PORT-FORWARD] Port forwarding started")
-                return True
-            else:
-                print(f"[WARN] Port forwarding failed to start: {result.stderr}")
-                return False
-        except Exception as e:
-            print(f"[WARN] Port forwarding exception: {e}")
-            return False
-
-    def stop_k8s_services(self, stop_port_forward=True):
-        """Stop K8s application services (auto-manages port-forward)"""
+    def stop_k8s_services(self):
+        """Stop K8s application services"""
         print("[K8S] Stopping application services...")
-
-        # Stop port-forward first
-        if stop_port_forward:
-            print("[PORT-FORWARD] Auto-stopping port forwarding...")
-            self.stop_port_forward_automation()
 
         # K8s service list
         services = ["execution-service", "market-data-replay", "strategy-engine"]
@@ -250,33 +364,6 @@ class DevCommand:
         if stopped:
             print(f"[OK] Stopped: {', '.join(stopped)}")
         return len(stopped) > 0
-
-    def stop_port_forward_automation(self):
-        """Auto-stop port-forward (internal use)"""
-        try:
-            result = subprocess.run(
-                ["python", "scripts/dev/k8s_port_forward.py", "stop"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode == 0:
-                # Show only key information
-                if "[SUMMARY]" in result.stdout:
-                    summary_line = [line for line in result.stdout.split('\n') if '[SUMMARY]' in line]
-                    if summary_line:
-                        print(f"[PORT-FORWARD] {summary_line[0].strip()}")
-                else:
-                    print("[PORT-FORWARD] Port forwarding stopped")
-                return True
-            else:
-                # Port-forward stop failure does not affect overall operation
-                return False
-        except Exception as e:
-            # Port-forward stop failure does not affect overall operation
-            return False
 
     def start_services(self):
         """Start application services"""
@@ -540,57 +627,74 @@ class DevCommand:
             return True
 
     def run_test(self, test_type=None):
-        """Run tests (auto-ensures port-forward is running)"""
+        """Run tests.
+
+        For test_type='smoke', runs the full E2E workflow: switch to E2E config,
+        rebuild + redeploy strategy-engine & execution-service, run
+        scripts/test/core/smoke_test.py, then restore Production config
+        (always, even on failure). For other types, falls back to smart_e2e.py.
+        """
+        if test_type == "smoke":
+            return self.run_smoke_e2e_workflow()
+
         if test_type:
-            # Test type specified, pass the corresponding argument
             test_files = {
                 "minimal": "--minimal",
-                "smoke": "--smoke",
                 "full": "--full",
-                "unit": "--unit"
+                "unit": "--unit",
             }
             print(f"[TEST] Running {test_type} test...")
 
-            # Auto-ensure port-forward is running
-            if test_type in ["smoke", "full"]:
-                print("[PORT-FORWARD] Ensuring port forwarding is running...")
-                self.ensure_port_forward_running()
-
             return self.run_script("scripts/test/smart_e2e.py", test_files[test_type])
-        else:
-            # No type specified, let user choose interactively
-            print("[TEST] Running tests...")
 
-            # Auto-ensure port-forward is running
-            print("[PORT-FORWARD] Ensuring port forwarding is running...")
-            self.ensure_port_forward_running()
+        print("[TEST] Running tests...")
+        return self.run_script("scripts/test/smart_e2e.py")
 
-            return self.run_script("scripts/test/smart_e2e.py")
+    def run_smoke_e2e_workflow(self) -> bool:
+        """Full E2E workflow: switch -> build -> deploy -> smoke test -> restore.
 
-    def ensure_port_forward_running(self):
-        """Ensure port-forward is running"""
+        Always restores Production config in a finally block.
+        """
+        targets = ["strategy-engine", "execution-service"]
+        success = False
         try:
-            # Check port-forward status
-            result = subprocess.run(
-                ["python", "scripts/dev/k8s_port_forward.py", "status"],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
+            print("\n=== [1/5] Switching to E2E config ===")
+            if not self._switch_env("E2E"):
+                return False
 
-            if result.returncode == 0 and "0/3" not in result.stdout:
-                # Port-forward is already running
-                print("[PORT-FORWARD] Port forwarding is already running")
-                return True
-            else:
-                # Port-forward is not running, start it
-                print("[PORT-FORWARD] Starting port forwarding...")
-                return self.start_port_forward_automation()
+            print("\n=== [2/5] Building images ===")
+            for svc in targets:
+                if not self._build_service(svc):
+                    return False
 
-        except Exception as e:
-            print(f"[WARN] Failed to check port-forward status, attempting to start: {e}")
-            return self.start_port_forward_automation()
+            print("\n=== [3/5] Deploying & waiting for rollout ===")
+            if not self._restart_deployments(*targets):
+                return False
+
+            # Clear Kafka topic so strategy-engine starts from a clean slate.
+            # Old messages (live GM bars + previous replay sessions) would
+            # confuse the strategy (mixed-timeframe EMA input).
+            print("\n=== [3.5/5] Clearing Kafka topic (market.data) ===")
+            self._clear_kafka_topic("market.data")
+
+            # strategy-engine needs to re-join the consumer group after topic
+            # reset. Give it time to stabilise before replay starts.
+            print("  waiting 20s for consumer to rejoin...")
+            time.sleep(20)
+
+            # Note: smoke_test.py connects via NodePort (30880) and
+            # LoadBalancer (5432) directly — no port-forward needed.
+            print("\n=== [4/5] Skipping port-forward (NodePort/LB used directly) ===")
+
+            print("\n=== [5/5] Running smoke test ===")
+            success = self.run_script("scripts/test/core/smoke_test.py")
+            print("\n[SMOKE] PASSED" if success else "\n[SMOKE] FAILED")
+            return success
+        finally:
+            print("\n=== Restoring Production config ===")
+            self._switch_env("Production")
+            self._restart_deployments(*targets)
+            print("[RESTORE] back to Production mode.")
 
     def db_stats(self):
         """Show database statistics"""
@@ -710,26 +814,6 @@ class DevCommand:
             print(f"[ERROR] Real-time log monitoring failed: {e}")
             return False
 
-    def k8s_pf_start(self):
-        """Start K8s port-forward"""
-        print("[K8S] Starting Port-Forward mapping...")
-        return self.run_script("scripts/dev/k8s_port_forward.py", "start")
-
-    def k8s_pf_stop(self):
-        """Stop K8s port-forward"""
-        print("[K8S] Stopping Port-Forward mapping...")
-        return self.run_script("scripts/dev/k8s_port_forward.py", "stop")
-
-    def k8s_pf_status(self):
-        """Show K8s port-forward status"""
-        print("[K8S] Port-Forward status:")
-        return self.run_script("scripts/dev/k8s_port_forward.py", "status")
-
-    def k8s_pf_restart(self):
-        """Restart K8s port-forward"""
-        print("[K8S] Restarting Port-Forward mapping...")
-        return self.run_script("scripts/dev/k8s_port_forward.py", "restart")
-
     def k8s_scale(self, service=None, replicas=None):
         """Scale K8s service replicas"""
         if not service or not replicas:
@@ -825,13 +909,12 @@ def main():
         "watch-logs": cmd.watch_logs,
         "k8s-scale": cmd.k8s_scale,
         "k8s-services": cmd.k8s_services,
-        "k8s-pf-status": cmd.k8s_pf_status,
-        # Keep the following commands as advanced options
-        "k8s-pf-start": cmd.k8s_pf_start,
-        "k8s-pf-stop": cmd.k8s_pf_stop,
-        "k8s-pf-restart": cmd.k8s_pf_restart,
         "k8s-start": cmd.start_k8s_services,
-        "k8s-stop": cmd.stop_k8s_services
+        "k8s-stop": cmd.stop_k8s_services,
+        # Environment switching and per-service build/deploy
+        "switch": lambda: cmd.switch_env(sys.argv[2] if len(sys.argv) > 2 else ""),
+        "build":  lambda: cmd.build_one(sys.argv[2] if len(sys.argv) > 2 else "") if len(sys.argv) > 2 else cmd.build_all(),
+        "deploy": lambda: cmd.deploy_one(sys.argv[2]) if len(sys.argv) > 2 else cmd.deploy_all(),
     }
 
     if command in commands:

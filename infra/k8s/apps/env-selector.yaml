@@ -1,0 +1,13 @@
+# Single source of truth for "which environment is currently active".
+# Read by:
+#   - execution-service (ASPNETCORE_ENVIRONMENT → appsettings.{MODE}.json)
+#   - strategy-engine  (STRATEGY_CONFIG      → config/{STRATEGY_CONFIG})
+# Mode values: "Production" (default) or "E2E". When switching, update BOTH keys.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: env-selector
+  namespace: trading-platform
+data:
+  mode: Production
+  strategy_config: live.yaml

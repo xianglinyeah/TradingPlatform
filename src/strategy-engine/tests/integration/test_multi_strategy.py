@@ -15,21 +15,21 @@ class TestMultiStrategy:
 
     def test_config_loading(self):
         """Test that multi-strategy config is loaded correctly"""
-        config_path = Path(__file__).parent.parent.parent / "config" / "e2e.yaml"
+        config_path = Path(__file__).parent.parent.parent / "config" / "live.yaml"
         config = load_config(str(config_path))
 
         # Verify structure
         assert 'strategies' in config
-        assert len(config['strategies']) == 2
+        assert len(config['strategies']) == 4
 
         # Verify strategy configs
         assert config['strategies'][0]['name'] == 'ma_main'
         assert config['strategies'][0]['enabled'] == True
         assert config['strategies'][0]['class'] == 'MovingAverageStrategy'
 
-        assert config['strategies'][1]['name'] == 'test_buy_every_bar'
-        assert config['strategies'][1]['enabled'] == False
-        assert config['strategies'][1]['class'] == 'BuyEveryBarStrategy'
+        assert config['strategies'][3]['name'] == 'test_buy_every_bar'
+        assert config['strategies'][3]['enabled'] == False
+        assert config['strategies'][3]['class'] == 'BuyEveryBarStrategy'
 
     def test_strategy_loading(self):
         """Test that only enabled strategies are loaded"""

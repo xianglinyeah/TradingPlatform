@@ -1,9 +1,9 @@
-# strategy_engine Docker Live Trading Configuration (gRPC)
+# strategy_engine production (live) configuration for Kubernetes.
 
 mode: live
 
-# Kafka configuration (Docker internal networking)
-kafka_brokers: dev-kafka:19092
+# Kafka configuration (k8s service DNS)
+kafka_brokers: kafka.infrastructure:9092
 kafka_topic: market.data
 kafka_group_id: strategy_engine_live
 
@@ -67,7 +67,7 @@ strategies:
 # Execution configuration (gRPC to ExecutionService)
 executor: grpc
 execution_service_address: execution-service:8084
-session_id: live-session-docker
+session_id: live-session-k8s
 
 # Account configuration
 initial_capital: 1000000
