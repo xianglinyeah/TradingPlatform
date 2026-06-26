@@ -4,11 +4,27 @@ using ExecutionService.Core.Services;
 using ExecutionService.Core.MarketRules;
 using ExecutionService.Core.Events;
 using Grpc.Core;
+using Prometheus;
 
 namespace Execution.Service.Services;
 
 public class ExecutionGrpcService : Execution.ExecutionBase
 {
+    private static readonly Counter OrdersReceived = Metrics.CreateCounter(
+        "execution_orders_received_total", "Total orders received via gRPC",
+        new CounterConfiguration { LabelNames = new[] { "symbol", "side" } });
+
+    private static readonly Counter OrdersRejected = Metrics.CreateCounter(
+        "execution_orders_rejected_total", "Total orders rejected",
+        new CounterConfiguration { LabelNames = new[] { "reason" } });
+
+    private static readonly Counter OrdersFilled = Metrics.CreateCounter(
+        "execution_orders_filled_total", "Total orders filled",
+        new CounterConfiguration { LabelNames = new[] { "symbol", "side" } });
+
+    private static readonly Histogram OrderProcessingDuration = Metrics.CreateHistogram(
+        "execution_order_processing_duration_seconds", "Order processing time");
+
     private readonly IExecutionAdapter _executionAdapter;
     private readonly IPositionManager _positionManager;
     private readonly IAccountManager _accountManager;
@@ -62,8 +78,11 @@ public class ExecutionGrpcService : Execution.ExecutionBase
 
     public override async Task<OrderResponse> SubmitOrder(OrderRequest request, ServerCallContext context)
     {
+        using (OrderProcessingDuration.NewTimer())
+        OrdersReceived.WithLabels(request.Symbol, request.Side.ToString()).Inc();
+
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-        _logger.LogInformation("[{Timestamp}] 🔔 Received gRPC order request: Session={Session}, Symbol={Symbol}, Side={Side}, Qty={Qty}, Price={Price}",
+        _logger.LogInformation("[{Timestamp}] Received gRPC order request: Session={Session}, Symbol={Symbol}, Side={Side}, Qty={Qty}, Price={Price}",
             timestamp, request.SessionId, request.Symbol, request.Side, request.Quantity, request.Price);
 
         try
@@ -94,6 +113,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
             {
                 order.Status = OrderStatus.Rejected;
                 order.Reason = $"Rejected by market rules: {marketRuleResult.RuleName} - {marketRuleResult.Reason}";
+                OrdersRejected.WithLabels("MARKET_RULE").Inc();
                 _logger.LogWarning("Order rejected by market rules: {OrderId}, Rule: {Rule}, Reason: {Reason}",
                     order.OrderId, marketRuleResult.RuleName, marketRuleResult.Reason);
                 return MapOrderResponse(order);
@@ -105,6 +125,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
             {
                 order.Status = OrderStatus.Rejected;
                 order.Reason = riskResult.Reason;
+                OrdersRejected.WithLabels("RISK_CONTROL").Inc();
                 _logger.LogWarning("Order rejected by risk control: {OrderId}, Reason: {Reason}", order.OrderId, riskResult.Reason);
                 return MapOrderResponse(order);
             }
@@ -133,6 +154,11 @@ public class ExecutionGrpcService : Execution.ExecutionBase
             if (order.Status == OrderStatus.Filled || order.Status == OrderStatus.Partial ||
                 order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Rejected)
             {
+                if (order.Status == OrderStatus.Filled)
+                    OrdersFilled.WithLabels(order.Symbol, order.Side.ToString()).Inc();
+                else if (order.Status == OrderStatus.Rejected)
+                    OrdersRejected.WithLabels("ADAPTER").Inc();
+
                 _logger.LogInformation(
                     "Order terminal={Status}, updating position: {SessionId} {Symbol}, fills={FillCount}",
                     order.Status, order.SessionId, order.Symbol, result.Fills.Count);

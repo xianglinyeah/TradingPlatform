@@ -55,6 +55,11 @@ def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
 
+    # Start Prometheus metrics server on :8000
+    from src import metrics
+    metrics.start(8000)
+    logger.info("Prometheus metrics server started on :8000")
+
     # Determine config file
     if args.config is None:
         config_file = Path(__file__).parent / "config" / f"{args.mode}.yaml"

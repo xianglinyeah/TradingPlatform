@@ -78,6 +78,24 @@ data:
           - source_labels: [namespace]
             regex: 'infrastructure|trading-platform|kube-system'
             action: keep
+
+      # Custom Kafka exporter (topic offsets + consumer group lag)
+      - job_name: 'kafka-exporter'
+        static_configs:
+          - targets: ['kafka-exporter.infrastructure:9308']
+
+      # Application metrics (prometheus_client / prometheus-net)
+      - job_name: 'strategy-engine-metrics'
+        static_configs:
+          - targets: ['strategy-engine.trading-platform:8000']
+
+      - job_name: 'execution-service-metrics'
+        static_configs:
+          - targets: ['execution-service.trading-platform:8083']
+
+      - job_name: 'market-data-gm-metrics'
+        static_configs:
+          - targets: ['market-data-gm.trading-platform:8000']
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

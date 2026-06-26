@@ -17,7 +17,7 @@ class BacktestTestHelper:
     """Backtest test helper class"""
 
     def __init__(self):
-        self.replay_api_url = "http://localhost:30880/api/Replay"
+        self.replay_api_url = "http://localhost:8081/api/Replay"
         self.db_config = {
             "host": "localhost",
             "port": 5432,

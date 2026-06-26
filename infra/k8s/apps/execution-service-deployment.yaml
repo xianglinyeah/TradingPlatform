@@ -78,4 +78,4 @@ spec:
 
       restartPolicy: Always
 
-# NOTE: Service definition is in execution-service-service.yaml (NodePort 30884)
+# NOTE: Service definition is in execution-service-service.yaml (LoadBalancer 8084/8083)

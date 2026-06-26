@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 import kafka_producer
 import market_event
+import metrics
 import symbol_converter
 
 logger = logging.getLogger("gm_strategy")
@@ -111,7 +112,9 @@ def on_bar(context, bars):
                 event.Close,
                 event.Volume,
             )
+            metrics.bars_published.labels(symbol=event.Symbol).inc()
         except Exception as ex:
+            metrics.kafka_publish_errors.inc()
             logger.exception("Failed to process real-time bar: %s", ex)
 
 

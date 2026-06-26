@@ -102,11 +102,10 @@ metadata:
   labels:
     app: market-data-replay
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
-  - port: 8080
+  - port: 8081
     targetPort: 8080
-    nodePort: 30880
     protocol: TCP
     name: http
   selector:

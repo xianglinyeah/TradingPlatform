@@ -73,6 +73,11 @@ def main(argv=None) -> int:
         client_id=cfg.kafka.client_id,
     )
 
+    # Start Prometheus metrics server
+    import metrics
+    metrics.start(8000)
+    log.info("Prometheus metrics server started on :8000")
+
     # Inject runtime state into gm_strategy module before run()
     import gm_strategy
     session_id = f"{cfg.session_id_prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"

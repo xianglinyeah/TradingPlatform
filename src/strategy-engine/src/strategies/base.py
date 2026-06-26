@@ -6,6 +6,7 @@ import logging
 
 from ..data import BarData
 from ..execution import Order, Position, Signal
+from .. import metrics
 
 if TYPE_CHECKING:
     from ..context import Context
@@ -129,9 +130,12 @@ class BaseStrategy(ABC):
             price=price,
             reason=reason,
             timestamp=datetime.now(),
-            strategy_id=self.name  # Auto-tag with strategy name
+            strategy_id=self.name
         )
         self.signals.append(signal)
+        metrics.signals_generated.labels(
+            strategy_name=self.name, symbol=symbol, side=signal_type
+        ).inc()
         return signal
 
     def get_trade_history(self) -> List[dict]:

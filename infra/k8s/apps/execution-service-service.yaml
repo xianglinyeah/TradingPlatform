@@ -7,13 +7,15 @@ metadata:
     app: execution-service
     version: v1
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: execution-service
   ports:
     - name: grpc
       port: 8084
       targetPort: 8084
-      nodePort: 30884
       protocol: TCP
-  sessionAffinity: None
+    - name: metrics
+      port: 8083
+      targetPort: 8083
+      protocol: TCP

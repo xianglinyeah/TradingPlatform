@@ -7,6 +7,7 @@ using ExecutionService.Core.Events;
 using ExecutionService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Prometheus;
 using Serilog;
 using Serilog.Events;
 
@@ -104,6 +105,9 @@ catch (Exception ex)
 
 // Configure HTTP request pipeline
 app.UseCors();
+
+// Prometheus metrics endpoint at /metrics (served on HTTP port 8083)
+app.UseMetricServer();
 
 if (app.Environment.IsDevelopment())
 {

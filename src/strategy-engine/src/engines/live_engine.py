@@ -5,6 +5,8 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from .. import metrics
+
 try:
     from ..execution import RealGrpcExecutor
     REAL_GRPC_AVAILABLE = True
@@ -251,9 +253,11 @@ class LiveEngine(BaseEngine):
                         if not matcher.matches(bar.symbol):
                             continue
 
-                        signals = strategy.on_bar(bar)
+                        with metrics.bar_processing_duration.labels(strategy_name=strategy.name).time():
+                            signals = strategy.on_bar(bar)
                         if signals:
                             all_signals.extend(signals)
+                        metrics.bars_processed.labels(symbol=bar.symbol).inc()
 
                     self.bars_processed += 1
 

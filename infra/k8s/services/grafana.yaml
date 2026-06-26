@@ -1,5 +1,5 @@
 # Grafana - Monitoring dashboard / log query
-# NodePort exposure: http://localhost:30300  (admin/admin)
+# LoadBalancer: http://localhost:3000  (admin/admin)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -75,7 +75,7 @@ spec:
         - name: GF_USERS_ALLOW_SIGN_UP
           value: "false"
         - name: GF_SERVER_ROOT_URL
-          value: http://localhost:30300
+          value: http://localhost:3000
         volumeMounts:
         - name: grafana-storage
           mountPath: /var/lib/grafana
@@ -102,10 +102,9 @@ metadata:
   name: grafana
   namespace: infrastructure
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
     - port: 3000
       targetPort: 3000
-      nodePort: 30300
   selector:
     app: grafana

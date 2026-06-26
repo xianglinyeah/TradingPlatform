@@ -1,5 +1,5 @@
 # Kafka UI for Kubernetes
-# NodePort exposed: http://localhost:30301
+# LoadBalancer: http://localhost:8080
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,10 +41,9 @@ metadata:
   name: kafka-ui
   namespace: infrastructure
 spec:
-  type: NodePort
+  type: LoadBalancer
   ports:
   - port: 8080
     targetPort: 8080
-    nodePort: 30301
   selector:
     app: kafka-ui

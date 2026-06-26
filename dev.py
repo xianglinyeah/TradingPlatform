@@ -682,8 +682,7 @@ class DevCommand:
             print("  waiting 20s for consumer to rejoin...")
             time.sleep(20)
 
-            # Note: smoke_test.py connects via NodePort (30880) and
-            # LoadBalancer (5432) directly — no port-forward needed.
+            # Note: smoke_test.py connects via LoadBalancer (8080, 5432) directly.
             print("\n=== [4/5] Skipping port-forward (NodePort/LB used directly) ===")
 
             print("\n=== [5/5] Running smoke test ===")
