@@ -33,15 +33,15 @@ strategies:
       quantity: 100
       max_position: 1000
 
-  # Strategy 2: BuyEveryBar - used to test the place order API (disabled)
+  # Strategy 2: BuyEveryBar - test strategy that buys on every minute bar
   - name: test_buy_every_bar
     class: BuyEveryBarStrategy
-    enabled: false
+    enabled: true
     symbols:
       - 600000.SH
     params:
-      quantity: 50
-      max_position: 500
+      quantity: 100
+      max_position: 1000
 
 # Execution configuration (locally connect to Docker ExecutionService)
 executor: grpc

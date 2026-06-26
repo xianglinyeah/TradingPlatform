@@ -1,8 +1,6 @@
 """Fundamentals incremental update via the multi-symbol point-in-time APIs.
-
-Mirrors C# `FundamentalsIngestor.RunIncrementalPt`. Each Pt call returns
-the entire symbol universe for one date — ~50-100x faster than per-symbol
-incremental.
+Each Pt call returns the entire symbol universe for one date (far faster than
+per-symbol incremental).
 """
 from __future__ import annotations
 

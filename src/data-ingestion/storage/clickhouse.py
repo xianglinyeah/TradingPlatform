@@ -1,15 +1,9 @@
 """ClickHouse storage for k-line bars (clickhouse-connect HTTP client).
 
-Mirrors C# `ClickHouseStorageService`. Provides:
-- `get_last_bar_time(table, ts_code)` → last trade_time or None
-- `delete_range(table, ts_code, from, to)` (mutations_sync=2 for idempotency)
-- `insert_bars(table, bars, ts_code)`
-
-Tables: `kline_1min`, `kline_daily` in the configured database (default: market_data).
-
-Time handling: the C# side stores Beijing wall-clock instants labelled as UTC.
-We mirror that — `_strip_tz` strips tzinfo before sending to CH so values
-remain the wall-clock numbers (09:30 → 09:30 in the CH DateTime column).
+Tables `kline_1min` and `kline_daily` live in the configured database
+(default: market_data). Beijing wall-clock instants are stored as naive
+DateTime values (e.g. 09:30 stays 09:30); `_strip_tz` enforces this before
+sending values to ClickHouse.
 """
 from __future__ import annotations
 
@@ -125,16 +119,11 @@ class ClickHouseStorage:
 
     def delete_ranges_batch(self, table: str,
                             ranges: List[tuple]) -> int:
-        """Delete multiple (ts_code, from_dt, to_dt) ranges in ONE ALTER TABLE.
+        """Delete multiple (ts_code, from_dt, to_dt) ranges in one ALTER TABLE.
+        Combining N ranges into one mutation is faster than N separate
+        `ALTER TABLE ... DELETE` calls (ClickHouse mutation has fixed overhead).
 
-        Combining N ranges into one mutation is dramatically faster than N
-        separate `ALTER TABLE ... DELETE` calls because ClickHouse applies
-        each mutation as a background job (constant overhead per mutation).
-
-        Args:
-            ranges: list of (ts_code, from_dt, to_dt)
-
-        Returns number of ranges included.
+        Returns the number of ranges included.
         """
         if not ranges:
             return 0
@@ -165,12 +154,10 @@ class ClickHouseStorage:
 
     def insert_bars_batch(self, table: str,
                           bars_by_tscode: dict) -> int:
-        """Insert bars for multiple ts_codes in ONE INSERT call.
+        """Insert bars for multiple ts_codes in one INSERT call.
 
-        Args:
-            bars_by_tscode: {ts_code: [bar_dicts, ...]}
-
-        Returns total rows inserted.
+        `bars_by_tscode` maps ts_code -> [bar_dicts, ...]. Returns the total
+        number of rows inserted.
         """
         def _f(b, k):
             v = b.get(k)

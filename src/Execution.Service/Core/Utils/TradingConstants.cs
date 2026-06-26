@@ -43,13 +43,13 @@ public static class TradingConstants
     /// <summary>Volume ratio threshold at which partial-fill splitting begins.</summary>
     public const decimal PARTIAL_FILL_RATIO_THRESHOLD_MIN = 0.001m;
 
-    /// <summary>Volume ratio below which we split into 2 fills.</summary>
+    /// <summary>Volume ratio at/below which 2 fills are used.</summary>
     public const decimal PARTIAL_FILL_RATIO_TWO_FILLS = 0.01m;
 
-    /// <summary>Volume ratio below which we split into 3 fills.</summary>
+    /// <summary>Volume ratio at/below which 3 fills are used.</summary>
     public const decimal PARTIAL_FILL_RATIO_THREE_FILLS = 0.05m;
 
-    /// <summary>Volume ratio below which we split into 5 fills.</summary>
+    /// <summary>Volume ratio at/below which 5 fills are used.</summary>
     public const decimal PARTIAL_FILL_RATIO_FIVE_FILLS = 0.1m;
 
     /// <summary>Price impact per 1% of daily volume (linear).</summary>

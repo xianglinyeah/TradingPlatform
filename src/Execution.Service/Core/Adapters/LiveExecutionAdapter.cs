@@ -25,7 +25,6 @@ public class LiveExecutionAdapter : ExecutionAdapterBase
         {
             _logger.LogWarning("[LIVE_ADAPTER] ⚠️ Live execution not yet implemented, currently using simulated execution");
 
-            // Set execution mode
             order.ExecutionMode = ExecutionMode.LIVE_BROKER;
 
             // TODO: Call broker live API

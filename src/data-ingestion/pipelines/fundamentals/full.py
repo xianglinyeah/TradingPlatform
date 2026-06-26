@@ -1,8 +1,7 @@
-"""Full fundamentals back-fill via time-series APIs (one symbol's full history per call).
-
-Mirrors C# `FundamentalsIngestor.Run`. For each symbol in the pool, sequentially
-ingests all 8 tables, batching fields per API call. Idempotent and resumable
-via `public.fundamentals_ingestion_progress`.
+"""Full fundamentals back-fill via the time-series APIs (one symbol's full
+history per call). For each symbol in the pool, sequentially ingests all 8
+tables, batching fields per API call. Idempotent and resumable via
+`public.fundamentals_ingestion_progress`.
 """
 from __future__ import annotations
 

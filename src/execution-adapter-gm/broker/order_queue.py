@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 class PlaceOrderJob:
     """A request enqueued by the gRPC PlaceOrder handler.
 
-    `order_id` is the client-supplied cl_ord_id. After `order_volume` returns
-    we record the Future under both the client cl_ord_id and any native id the
-    SDK assigns (we trust they match — the C# version also keys on cl_ord_id).
+    `order_id` is the client-supplied cl_ord_id used as the registry key.
     """
     order_id: str
     gm_symbol: str
@@ -38,9 +36,7 @@ class PlaceOrderJob:
     future: "Future[Any]"
 
 
-# Thread-safe queue consumed by the strategy thread.
-# maxsize=1000 prevents unbounded growth if the GM SDK thread stalls —
-# instead, PlaceOrder will fast-fail with queue.Full rather than OOM the process.
+# Bounded queue so a stalled GM SDK thread surfaces as queue.Full instead of OOM.
 REQUEST_QUEUE: "queue.Queue[PlaceOrderJob]" = queue.Queue(maxsize=1000)
 
 
@@ -67,6 +63,19 @@ class PendingOrderRegistry:
     def remove(self, cl_ord_id: str) -> None:
         with self._lock:
             self._table.pop(cl_ord_id, None)
+
+    def pop_any(self) -> Optional[tuple]:
+        """Return and remove any single pending (cl_ord_id, future). Used as
+        a fallback when on_order_status fires with a server-assigned cl_ord_id
+        that does not match the client-supplied key. Safe because the poll
+        loop processes orders one at a time.
+        """
+        with self._lock:
+            if not self._table:
+                return None
+            cl_ord_id = next(iter(self._table))
+            future = self._table.pop(cl_ord_id)
+            return cl_ord_id, future
 
     def clear(self) -> None:
         with self._lock:

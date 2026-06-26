@@ -15,7 +15,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Fix PostgreSQL DateTime timezone issue - must be set early in application startup
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-// Add gRPC services
 builder.Services.AddGrpc();
 
 // Add gRPC reflection service

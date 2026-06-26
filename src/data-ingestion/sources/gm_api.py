@@ -1,13 +1,4 @@
-"""GM Python SDK wrapper.
-
-Thin functional wrapper over `gm.api` exposing:
-- `set_token` / `set_addr` once at startup
-- `history_bars(symbol, frequency, start, end)` returning a list[dict] of bar rows
-- `stk_get_*` Pt and time-series wrappers for fundamentals (Phase 3-4)
-
-Compared with the C# version we don't need reflection — the Python SDK returns
-DataFrames or list[dict] directly.
-"""
+"""Thin functional wrapper over the GM Python SDK (`gm.api`)."""
 from __future__ import annotations
 
 import logging
@@ -51,13 +42,9 @@ def history_bars(
     start: datetime,
     end: datetime,
 ) -> List[dict]:
-    """Fetch historical bars for a single symbol in [start, end].
-
-    Returns a list of dicts keyed by lowercase bar fields:
-    `bob`, `eob`, `open`, `close`, `high`, `low`, `volume`, `amount`.
-
-    Mirrors C# `GMApiService.GetHistoryBars`. Uses df=True for efficiency,
-    then converts to records so callers don't need pandas.
+    """Fetch historical bars for a single symbol in [start, end]. Returns a
+    list of dicts keyed by lowercase bar fields (`bob`, `eob`, `open`,
+    `close`, `high`, `low`, `volume`, `amount`).
     """
     sdk = _sdk()
     start_str = start.strftime("%Y-%m-%d %H:%M:%S")
@@ -74,7 +61,6 @@ def history_bars(
     if df is None or len(df) == 0:
         return []
 
-    # Normalize columns: SDK may return bob/eob as timezone-aware timestamps.
     records = df.to_dict("records")
     return [_normalize_bar(r) for r in records]
 
@@ -95,15 +81,11 @@ def history_bars_batch(
     start: datetime,
     end: datetime,
 ) -> dict:
-    """Fetch historical bars for multiple symbols in ONE GM call.
+    """Fetch historical bars for multiple symbols in a single GM call.
 
-    Returns a dict {symbol: [bar_dicts]} keyed by GM symbol (e.g. 'SHSE.600000').
-    Symbols that returned no data (suspended/delisted/pre-IPO) are absent.
-
-    Auto-halves the batch on status 1029 ('query result too large').
-
-    Mirrors `history_bars` but batches the GM `history()` call. The GM SDK
-    accepts `symbol: str|List` natively (see query.py:history).
+    Returns a dict {symbol: [bar_dicts]} keyed by GM symbol. Symbols with
+    no data (suspended/delisted/pre-IPO) are absent. Auto-halves the batch
+    on status 1029 ('query result too large').
     """
     if not symbols:
         return {}
@@ -123,7 +105,6 @@ def history_bars_batch(
         )
     except Exception as ex:
         msg = str(ex)
-        # status 1029 = "query result too large" — halve and retry recursively
         if "1029" in msg and len(symbols) > 1:
             mid = len(symbols) // 2
             logger.info(

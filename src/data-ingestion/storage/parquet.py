@@ -1,15 +1,10 @@
 """Parquet storage for minute and daily bars (pyarrow).
 
-Mirrors:
-- C# `DataStorageService` (minute, per-year file layout + PG metadata)
-- C# `DailyDataStorageService` (daily, single file per symbol)
+Schema: trade_time | ts_code | open | close | high | low | volume | amount | adj_factor.
 
-Schema matches the existing C#-written Parquet files:
-    trade_time | ts_code | open | close | high | low | volume | amount | adj_factor
-
-Both minute (per-year file) and daily (single file per symbol) writers are
-idempotent: append() reads existing bars, dedupes by `trade_time`, sorts,
-and rewrites the file.
+Minute bars use a per-year file layout backed by PG metadata; daily bars use
+a single file per symbol. Both writers are idempotent (read → dedupe by
+trade_time → sort → rewrite).
 """
 from __future__ import annotations
 
@@ -30,7 +25,7 @@ BAR_COLUMNS = [
     "volume", "amount", "adj_factor",
 ]
 
-# Match the C#-generated schema (timestamp[us, tz=UTC]).
+# Schema mirrors the existing on-disk Parquet files: timestamp[us, tz=UTC].
 TS_TYPE = pa.timestamp("us", tz="UTC")
 
 

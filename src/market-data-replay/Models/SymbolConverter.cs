@@ -1,9 +1,8 @@
 namespace MarketData.Replay.Models;
 
 /// <summary>
-/// Symbol code format conversion utility
-/// Used to convert between standard format (SZSE.000001) and GM format (SZSE.000001 / SHSE.600000)
-/// Note: This class should be kept in sync with symbol conversion logic in other services
+/// Symbol code conversion between standard format (SZSE.000001) and GM format.
+/// Keep in sync with the equivalent logic in other services.
 /// </summary>
 public static class SymbolConverter
 {

@@ -1,9 +1,8 @@
 namespace MarketData.Replay.Models;
 
 /// <summary>
-/// Kafka configuration settings
-/// Unified Kafka configuration class for use by all services
-/// Note: Configuration files for each service should be consistent with this structure
+/// Unified Kafka configuration shared by all services. Each service's
+/// configuration file must match this structure.
 /// </summary>
 public class KafkaSettings
 {

@@ -405,9 +405,8 @@ public class ExecutionGrpcService : Execution.ExecutionBase
         var allOrders = new List<Order>();
         if (string.IsNullOrEmpty(sessionId))
         {
-            // All sessions: pull via each session. PositionManager currently only supports per-session lookup.
-            // Simplified handling: if sessionId is empty, only query all visible orders.
-            // True all-session scan requires interface extension; here we return 0 + warning.
+            // PositionManager only supports per-session lookup; all-session scan
+            // would require interface extension. Empty session_id is rejected.
             _logger.LogWarning("ExpireDayOrders with empty session_id is not supported via PositionManager; please specify session_id");
             return new ExpireDayOrdersResponse { ExpiredCount = 0 };
         }

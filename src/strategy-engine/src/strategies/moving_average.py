@@ -157,7 +157,7 @@ class MovingAverageStrategy(BaseStrategy):
                     f"StopLoss={self.stop_loss_prices[bar.symbol]:.2f}, TakeProfit={self.take_profit_prices[bar.symbol]:.2f}"
                 )
 
-        # Check stop loss/take profit if we have a position
+        # Stop loss / take profit applies only when a position is open.
         elif position.quantity > 0 and self.stop_loss_prices[bar.symbol] is not None and self.take_profit_prices[bar.symbol] is not None:
             # Stop Loss: price falls to or below stop loss price
             if bar.low <= self.stop_loss_prices[bar.symbol]:

@@ -73,7 +73,8 @@ metadata:
   name: data-ingestion
   namespace: trading-platform
 spec:
-  schedule: "0 17 * * *"          # 17:00 UTC = 01:00 Beijing
+  schedule: "0 1 * * *"            # 01:00 Beijing local (k3s interprets as Asia/Shanghai)
+  timeZone: Asia/Shanghai
   concurrencyPolicy: Forbid        # Don't overlap runs (kline takes hours)
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5

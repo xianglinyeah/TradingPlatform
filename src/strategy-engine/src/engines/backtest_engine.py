@@ -28,7 +28,6 @@ class BacktestEngine(BaseEngine):
 
         self.parquet_path = Path(self.config['parquet_path'])
         self.symbols = self.config['symbols']
-        # Ensure dates are strings
         self.start_date = str(self.config['start_date'])
         self.end_date = str(self.config['end_date'])
 
@@ -137,7 +136,6 @@ class BacktestEngine(BaseEngine):
                     # Call all strategies that are interested in this symbol
                     all_signals = []
                     for strategy in self.strategies:
-                        # Check if this strategy trades this symbol (using wildcard matching)
                         matcher = self.symbol_matchers[strategy.name]
                         if not matcher.matches(bar.symbol):
                             continue

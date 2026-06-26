@@ -36,7 +36,6 @@ public class SimExecutionAdapter : ExecutionAdapterBase
             _logger.LogInformation("[SIM_ADAPTER] Executing simulated order: {Side} {Quantity} {Symbol} @ {Price}, TIF={TIF}",
                 order.Side, order.Quantity, order.Symbol, order.Price, order.TimeInForce);
 
-            // Set execution mode
             order.ExecutionMode = ExecutionMode.SIMULATION;
 
             // Apply slippage simulation
@@ -104,7 +103,7 @@ public class SimExecutionAdapter : ExecutionAdapterBase
                 order.FilledAt = fills[^1].FillTime;
                 order.Commission = fills.Sum(f => f.Commission);
 
-                // Note: average price affects order.Price, used for fund calculation
+                // Average price feeds order.Price, which is used for fund calculation.
                 order.Price = order.FillPrice;
 
                 _logger.LogInformation(
@@ -145,7 +144,6 @@ public class SimExecutionAdapter : ExecutionAdapterBase
                 await _accountManager.UpdateCashAsync(order.SessionId, proceeds);
             }
 
-            // Update trade count and commission
             await _accountManager.AddCommissionAsync(order.SessionId, order.Commission);
             await _accountManager.IncrementTradeCountAsync(order.SessionId);
 

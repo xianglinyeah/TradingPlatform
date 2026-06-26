@@ -1,13 +1,12 @@
-"""CLI entry point for data_ingestion.
+"""data_ingestion CLI.
 
-Usage mirrors the C# version:
-    python main.py <config.yaml> --mode=<mode>
+Usage: python main.py <config.yaml> --mode=<mode>
 
 Modes:
-    kline                     - Full K-line back-fill (minute + daily, Parquet + ClickHouse)
-    kline_incremental         - Daily K-line incremental (minute + daily)
-    fundamentals              - Full fundamentals back-fill (8 tables)
-    fundamentals_incremental  - Pt multi-symbol incremental (8 tables)
+    kline                     Full K-line back-fill (minute + daily → Parquet + ClickHouse)
+    kline_incremental         Daily K-line incremental (minute + daily)
+    fundamentals              Full fundamentals back-fill (8 tables)
+    fundamentals_incremental  Pt multi-symbol incremental (8 tables)
 """
 from __future__ import annotations
 

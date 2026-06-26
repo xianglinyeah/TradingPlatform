@@ -1,26 +1,18 @@
-"""execution_adapter_gm entry point.
+"""execution_adapter_gm entry point. Runs the GM Strategy event loop on a
+daemon thread and a gRPC server (port 5005) on the main thread.
 
-Usage:
-    python main.py [config.yaml]
+The gRPC servicer hands orders to the strategy thread via REQUEST_QUEUE,
+because the Python GM SDK only permits trading calls from the strategy thread.
 
-Starts two things:
-  1. GM Strategy event loop on a daemon thread (blocks on gm.api.run())
-  2. gRPC server on the main thread (port 5005) — main thread blocks on
-     server.wait_for_termination()
-
-The gRPC servicer hands orders to the strategy thread via a queue, because
-the Python GM SDK only allows trading calls from the strategy thread.
-
-Note: the `gm` SDK bundles _pb2.py files generated with protoc 3.x. They
-require either protobuf<4 at runtime, or `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
-=python` to use the pure-Python parser. We set the env var here unconditionally
-so the same process can load both the gm SDK's protos and our own freshly
-generated `gm_trading_pb2.py` (built with newer protoc).
+The `gm` SDK ships _pb2.py files generated with protoc 3.x, which require
+either protobuf<4 at runtime or the pure-Python parser. We set the env var
+unconditionally so the process can load both the gm SDK's protos and our
+own protoc-generated `gm_trading_pb2.py`.
 """
 from __future__ import annotations
 
 import os
-# MUST be set before any protobuf import. See module docstring.
+# Must be set before any protobuf import. See module docstring.
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
 import logging
@@ -31,6 +23,17 @@ import grpc
 from concurrent import futures
 
 from config import load_config
+# GM SDK discovers strategy callbacks by name in the module referenced by
+# `run(filename=...)`. Since `run(filename=__file__)` points here, these
+# symbols must be importable from this module's namespace.
+from broker.strategy import (  # noqa: F401
+    init,
+    on_schedule,
+    on_order_status,
+    on_execution_report,
+    on_error,
+    on_backtest_finished,
+)
 
 
 def _make_proto_importable() -> None:
@@ -114,7 +117,7 @@ def main(argv=None) -> int:
     gm_thread = threading.Thread(target=_run_gm, name="gm-strategy", daemon=True)
     gm_thread.start()
 
-    # Wait briefly so init() failures surface before we bind gRPC.
+    # Wait briefly so init() failures surface before the gRPC server binds.
     if not gm_strategy._initialized.wait(timeout=5.0):
         log.warning("GM strategy init() did not signal within 5s; continuing")
 
@@ -123,7 +126,7 @@ def main(argv=None) -> int:
         return 1
 
     # ---- Start gRPC server on the main thread ----
-    from grpc.servicer import GMTradingServicer
+    from gm_grpc.servicer import GMTradingServicer
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=cfg.grpc.workers),

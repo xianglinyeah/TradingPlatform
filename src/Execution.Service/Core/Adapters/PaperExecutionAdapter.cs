@@ -26,7 +26,6 @@ public class PaperExecutionAdapter : ExecutionAdapterBase
         _logger = logger;
         _gmSettings = gmSettings.Value;
 
-        // Initialize gRPC connection
         InitializeGrpcConnection();
     }
 
@@ -57,7 +56,6 @@ public class PaperExecutionAdapter : ExecutionAdapterBase
             _logger.LogInformation("[PAPER_ADAPTER] Submitting Paper Trading order: {Side} {Quantity} {Symbol} @ {Price}",
                 order.Side, order.Quantity, order.Symbol, order.Price);
 
-            // Set execution mode
             order.ExecutionMode = ExecutionMode.PAPER_BROKER;
 
             // If gRPC client is available, call GM Trading Adaptor

@@ -27,7 +27,8 @@ if _PROTO_DIR not in sys.path:
 import gm_trading_pb2 as pb  # noqa: E402
 import gm_trading_pb2_grpc as pb_grpc  # noqa: E402
 
-from broker import strategy as gm_strategy, order_enums  # noqa: E402
+from broker import strategy as gm_strategy  # noqa: E402
+from broker import enums as order_enums  # noqa: E402
 from utils import symbol_converter  # noqa: E402
 from broker.order_queue import (  # noqa: E402
     PENDING_ORDERS,
@@ -86,8 +87,7 @@ class GMTradingServicer(pb_grpc.GMTradingServicer):
             return self._place_order_rejected(request.order_id, str(ex))
 
         future: Future = Future()
-        # Mark the future as pending so that if the queue stalls past the
-        # timeout we don't leave a dangling Future in PENDING_ORDERS.
+        # Tracks the Future so a stalled queue does not leave it dangling in PENDING_ORDERS past the timeout.
         job = PlaceOrderJob(
             order_id=request.order_id,
             gm_symbol=gm_symbol,

@@ -61,8 +61,7 @@ class MarketDataEvent:
         for k in _EVENT_KEYS:
             v = getattr(self, k)
             if isinstance(v, float) and v.is_integer():
-                # Render as int so we emit "10000" instead of "10000.0",
-                # matching C# decimal JsonSerializer output.
+                # Emit as int ("10000" instead of "10000.0") to match C# decimal JSON output.
                 payload[k] = int(v)
             else:
                 payload[k] = v

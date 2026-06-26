@@ -1,16 +1,14 @@
 """Adaptive-window incremental k-line update.
 
-Mirrors C# `KlineIncrementalService.RunIncrementalAsync`:
-- Per-frequency lookback window (minute / daily separately)
-- Per-symbol gap check vs `max_gap_days`; skip if exceeded
-- Per-symbol error tolerance; one bad symbol doesn't abort the pool
-- Idempotent writes: Parquet (read-merge-dedupe-rewrite) + ClickHouse (DELETE-then-INSERT)
+Per-frequency lookback window (minute / daily separately); per-symbol gap
+check vs `max_gap_days` (skip if exceeded); per-symbol error tolerance;
+idempotent Parquet (read-merge-dedupe-rewrite) and ClickHouse
+(DELETE-then-INSERT) writes.
 
-Performance mode (default):
-- GM `history()` accepts `symbol: str|List`, so minute/daily are fetched
-  in batches of BATCH_SIZE symbols per call. Auto-halves on status 1029
-  ('query result too large'). Falls back to per-symbol mode if a batch
-  fails with a non-1029 error.
+GM `history()` accepts `symbol: str|List`, so minute/daily are fetched in
+batches of BATCH_SIZE symbols per call. The batch auto-halves on status
+1029 ('query result too large') and falls back to per-symbol mode on
+other errors.
 """
 from __future__ import annotations
 
@@ -34,9 +32,8 @@ logger = logging.getLogger(__name__)
 FREQ_MINUTE = "60s"
 FREQ_DAILY = "1d"
 
-# Default batch size for GM history() calls.
-# 100 fits a 3-day minute-bar window comfortably (well under GM's 1029 limit).
-# Auto-halves on status 1029 ('query result too large').
+# Batch size for GM history() calls. 100 is safe for a 3-day minute-bar
+# window (well below the GM status-1029 limit).
 BATCH_SIZE = 100
 
 
@@ -91,13 +88,13 @@ def run_incremental(kcfg: KlineIncrementalConfig,
     summary = KlineSummary(started_at=datetime.utcnow(), total_symbols=len(pool))
     now = datetime.now()
 
-    # ---------- Phase 1: plan per-symbol from_dt (CH queries only, no GM) ----------
+    # Phase 1: plan per-symbol from_dt (CH queries only, no GM)
     plan = _plan_symbols(kcfg, ch_storage, pool, now, summary)
     active = [s for s in pool if s in plan]
     logger.info("Plan: %d active, %d skipped (gap too large or no work)",
                 len(active), len(pool) - len(active))
 
-    # ---------- Phase 2: batch GM fetch + per-symbol writes ----------
+    # Phase 2: batch GM fetch + per-symbol writes
     for batch_start in range(0, len(active), BATCH_SIZE):
         batch = active[batch_start:batch_start + BATCH_SIZE]
         batch_no = batch_start // BATCH_SIZE + 1
@@ -120,9 +117,7 @@ def run_incremental(kcfg: KlineIncrementalConfig,
     return summary
 
 
-# ============================================================
 # Phase 1: per-symbol planning
-# ============================================================
 
 def _plan_symbols(kcfg, ch_storage, pool, now, summary) -> dict:
     """Pre-compute `from_dt` per (symbol, freq).
@@ -173,9 +168,7 @@ def _compute_from_dt(kcfg, ch_storage, table, ts_code, gm_symbol, freq,
     return last_bar - timedelta(days=kcfg.safety_buffer_days)
 
 
-# ============================================================
 # Phase 2: batch processing
-# ============================================================
 
 def _process_batch(kcfg, minute_storage, daily_storage, ch_storage,
                    batch_symbols, plan, now, summary) -> None:
@@ -201,13 +194,9 @@ def _process_batch(kcfg, minute_storage, daily_storage, ch_storage,
 def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
                         batch_symbols, plan, now, summary,
                         freq, table, plan_key, is_minute) -> None:
-    """Fetch one frequency for the whole batch, then batch CH writes.
-
-    Flow:
-      1. ONE GM `history()` call → bars for all N symbols
-      2. Per-symbol Parquet append (file-per-symbol, can't batch)
-      3. ONE ClickHouse `ALTER TABLE DELETE` with OR clauses (batch delete)
-      4. ONE ClickHouse `INSERT` with all rows (batch insert)
+    """Fetch one frequency for the whole batch, then batch CH writes:
+    one GM `history()` call, per-symbol Parquet append, one ClickHouse
+    DELETE and one INSERT.
     """
     syms = [s for s in batch_symbols if plan.get(s, {}).get(plan_key)]
     if not syms:
@@ -215,7 +204,7 @@ def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
 
     batch_from = min(plan[s][plan_key] for s in syms)
 
-    # ---- 1. GM batch fetch ----
+    # GM batch fetch
     try:
         bars_by_sym = gm_api.history_bars_batch(syms, freq, batch_from, now)
     except Exception as ex:
@@ -230,7 +219,7 @@ def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
     logger.info("%s batch: %d/%d symbols returned data, %d total bars",
                 freq, len(bars_by_sym), len(syms), fetched_count)
 
-    # ---- 2. Per-symbol Parquet + collect for batch CH ----
+    # Per-symbol Parquet writes + collect for batch CH
     bars_to_insert: dict[str, List[dict]] = {}
     ranges_to_delete: List[tuple] = []
 
@@ -245,7 +234,6 @@ def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
 
         ts_code = gm_to_ts_code(symbol)
 
-        # Parquet write (per-symbol; file-per-symbol by design)
         try:
             net_new = _parquet_write(minute_storage, daily_storage,
                                      symbol, bars, is_minute, summary)
@@ -266,7 +254,7 @@ def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
         logger.info("%s batch: nothing to write to CH", freq)
         return
 
-    # ---- 3. Batch CH delete (single ALTER TABLE) ----
+    # Batch CH delete (single ALTER TABLE)
     try:
         ch_storage.delete_ranges_batch(table, ranges_to_delete)
     except Exception as ex:
@@ -279,7 +267,7 @@ def _process_batch_freq(kcfg, minute_storage, daily_storage, ch_storage,
                 summary.errors.append((ts_code, f"{freq} CH delete: {ex2}"))
                 logger.warning("%s/%s CH delete failed: %s", freq, ts_code, ex2)
 
-    # ---- 4. Batch CH insert (single INSERT) ----
+    # Batch CH insert (single INSERT)
     try:
         ch_storage.insert_bars_batch(table, bars_to_insert)
     except Exception as ex:
@@ -349,9 +337,7 @@ def _write_bars(minute_storage, daily_storage, ch_storage,
                        freq, ts_code, ex)
 
 
-# ============================================================
 # Fallback: per-symbol mode (used when batch fails for non-1029 reasons)
-# ============================================================
 
 def _fallback_per_symbol(kcfg, minute_storage, daily_storage, ch_storage,
                          syms, plan, plan_key, freq, table,

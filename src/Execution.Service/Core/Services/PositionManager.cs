@@ -138,8 +138,8 @@ public class PositionManager : IPositionManager
         decimal weightedSum = 0m; // price * qty
         decimal totalFilledThisCall = 0m;
 
-        // Save order first (Order.Id is referenced when creating Trades in the fill loop)
-        // Note: the original implementation also saved at the end. We save once up front to obtain the Id, then Update at the end.
+        // Save order first so Order.Id is available when creating Trades in the fill loop.
+        // Update is called again at the end with final state.
         order.RemainingQuantity = order.Quantity - order.FilledQuantity;
         var savedOrder = await _orderRepository.CreateOrderAsync(order);
 
@@ -185,7 +185,7 @@ public class PositionManager : IPositionManager
             // Publish OrderUpdate for each fill
             order.FilledQuantity += fill.Quantity;
             order.RemainingQuantity = order.Quantity - order.FilledQuantity;
-            // Terminal status is set by adapter; here we only ensure the per-fill event status reflects the current cumulative state
+            // Terminal status is set by adapter; here only the per-fill event status is updated.
             await PublishOrderUpdateAsync(
                 order,
                 lastFill: new FillDetailEvent
@@ -197,7 +197,6 @@ public class PositionManager : IPositionManager
                 message: $"Fill #{fillSeq}");
         }
 
-        // Update position
         if (position.Id == 0)
         {
             await _positionRepository.CreatePositionAsync(position);
@@ -211,8 +210,7 @@ public class PositionManager : IPositionManager
             "Position update completed: {Symbol} FinalQty={FinalQty}, AvgPrice={AvgPrice}",
             order.Symbol, position.Quantity, position.AvgPrice);
 
-        // Sync order's average price / filled quantity / remaining quantity (adapter already set FilledQuantity/FillPrice;
-        // here we do a second verification based on fills to ensure consistency)
+        // Second verification: recompute average price / filled quantity from fills.
         if (totalFilledThisCall > 0)
         {
             order.FillPrice = weightedSum / totalFilledThisCall;

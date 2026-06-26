@@ -1,8 +1,8 @@
 namespace Execution.Service.Models;
 
 /// <summary>
-/// GM configuration settings
-/// Note: This class should be kept in sync with GMSettings in execution_adapter_gm (Python)
+/// GM configuration. Keep in sync with the GMSettings dataclass in
+/// execution_adapter_gm (Python).
 /// </summary>
 public class GMSettings
 {

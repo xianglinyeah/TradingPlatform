@@ -1,23 +1,14 @@
-"""market_data_gm entry point.
+"""market_data_gm entry point. Subscribes to GM real-time bars and publishes
+them to Kafka. Blocks on gm.api.run(); the SDK dispatches on_bar() each minute.
 
-Usage:
-    python main.py [config.yaml]
-
-Behaviour mirrors the C# `Program.cs`:
-1. Load config (YAML replaces appsettings.json)
-2. Init Kafka producer
-3. Set GM token + module-level state
-4. Block on gm.api.run() — SDK dispatches on_bar() each minute
-
-Note: the `gm` SDK bundles _pb2.py files generated with protoc 3.x. They
-require either protobuf<4 at runtime, or the pure-Python parser. We set the
-env var here unconditionally so the process loads cleanly under modern
-protobuf runtimes.
+The `gm` SDK ships _pb2.py files generated with protoc 3.x, which require
+either protobuf<4 at runtime or the pure-Python parser. We set the env var
+unconditionally so the process loads cleanly under modern protobuf runtimes.
 """
 from __future__ import annotations
 
 import os
-# MUST be set before any gm/protobuf import (gm SDK ships old _pb2 files).
+# Must be set before any gm/protobuf import (gm SDK ships old _pb2 files).
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
 import logging
@@ -26,6 +17,10 @@ import sys
 from datetime import datetime
 
 from config import load_config
+# GM SDK discovers `init`, `on_bar`, and `on_error` by name in the module
+# referenced by `run(filename=...)`. Since `run(filename=__file__)` points
+# here, these symbols must be importable from this module's namespace.
+from gm_strategy import init, on_bar, on_error  # noqa: F401
 
 
 def _setup_logging(log_dir: str, level: str) -> None:

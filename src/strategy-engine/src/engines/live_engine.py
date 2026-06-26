@@ -54,7 +54,6 @@ class LiveEngine(BaseEngine):
         strategies_config = self.config['strategies']
         self.strategies = self._load_strategies(strategies_config)
 
-        # Create symbol matchers for each strategy using base class method
         self.symbol_matchers = self._create_symbol_matchers(self.strategies)
 
         # Initialize HistoryStore and Context for daily data support
@@ -222,10 +221,8 @@ class LiveEngine(BaseEngine):
             self.kafka_topic,
             bootstrap_servers=self.kafka_brokers,
             group_id=self.kafka_group_id,
-            # 'earliest' (default Kafka semantic) prevents silent message loss when
-            # the consumer starts with no committed offset. Once the group has
-            # committed offsets, this setting is not used. Keep 'earliest' so a
-            # new group_id or expired offset does not skip data.
+            # 'earliest' avoids silent message loss for a new group_id or
+            # expired offsets; once offsets are committed this is unused.
             auto_offset_reset='earliest',
             enable_auto_commit=True,
             api_version=(2, 6, 0),  # Specify Kafka version to avoid compression issues
@@ -244,14 +241,12 @@ class LiveEngine(BaseEngine):
                     # Parse bar data
                     bar = self.parse_kafka_message(message.value)
 
-                    # If this is a control message (returns None), skip processing
+                    # Control messages return None.
                     if bar is None:
                         continue
 
-                    # Call all strategies that are interested in this symbol
                     all_signals = []
                     for strategy in self.strategies:
-                        # Check if this strategy trades this symbol (using wildcard matching)
                         matcher = self.symbol_matchers[strategy.name]
                         if not matcher.matches(bar.symbol):
                             continue

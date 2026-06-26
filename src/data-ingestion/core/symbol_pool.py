@@ -1,7 +1,5 @@
-"""Symbol pool loader (mirrors C# SymbolPoolLoader).
-
-Builds the A-share universe from `<daily_dir>/*.parquet` filenames
-(e.g. `600000.SH.parquet` → `SHSE.600000`). Result cached as a text file.
+"""A-share symbol pool loader. Builds the universe from `<daily_dir>/*.parquet`
+filenames (e.g. `600000.SH.parquet` → `SHSE.600000`); result cached to a text file.
 """
 from __future__ import annotations
 

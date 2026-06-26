@@ -215,7 +215,7 @@ class RealGrpcExecutor:
             )
             response = self.stub.GetPosition(request, timeout=10)
 
-            if response.symbol:  # If symbol exists, we have a position
+            if response.symbol:  # Non-empty symbol means a position exists
                 position = Position(symbol=response.symbol)
                 position.quantity = int(response.quantity)
                 position.avg_price = response.avg_price

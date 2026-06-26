@@ -1,21 +1,15 @@
 """GM Strategy callbacks for execution_adapter_gm.
 
-Python GM SDK requires `order_volume` (and friends) to be called from the
-strategy thread (the same thread that runs `run()`). The gRPC servicer runs
-on a worker pool — so we hand requests to the strategy thread via a queue.
-
-The strategy thread polls the queue inside `schedule(...)`. The Python SDK's
-`schedule(schedule_func, date_rule, time_rule)` fires `schedule_func` on the
-strategy thread at minute granularity during the configured session window.
-That's acceptable: PlaceOrder has a 30s future timeout, far longer than one
-poll interval.
+The Python GM SDK requires `order_volume` to be called from the strategy
+thread (the one that runs `run()`). The gRPC servicer runs on a worker pool,
+so PlaceOrder requests are handed to the strategy thread via REQUEST_QUEUE.
 
 Lifecycle:
-  init(context)           → set up schedule + subscriptions
-  on_schedule(context)    → drain REQUEST_QUEUE, call order_volume, register Future
-  on_order_status(ctx, order) → resolve pending Future by cl_ord_id
-  on_execution_report(ctx, rpt) → log fill details (informational)
-  on_error(ctx, code, msg)     → log
+  init(context)              → start order-poll daemon thread
+  on_schedule(context)       → drain REQUEST_QUEUE, call order_volume
+  on_order_status(ctx, ord)  → resolve pending Future by cl_ord_id
+  on_execution_report(ctx, rpt) → log fill details
+  on_error(ctx, code, msg)   → log
 """
 from __future__ import annotations
 
@@ -58,41 +52,34 @@ def prepare(
 
 
 def init(context):
-    """GM SDK init callback. We don't subscribe to any market data feed —
-    only need the strategy thread alive so we can call `order_volume` from it.
-    Register a schedule to drain the request queue during the trading session.
+    """GM SDK init callback. Keeps the strategy thread alive for `order_volume`
+    calls and starts a daemon thread that drains REQUEST_QUEUE once per second.
     """
-    from gm.api import schedule
-
     logger.info(
         "[GM_TRADING] Initializing GM trading service (strategy_id=%s, account=%s)",
         _RUN_CFG["strategy_id"],
         _RUN_CFG["account"] or "(default)",
     )
 
-    # `schedule` fires `on_schedule` once per minute during the session window.
-    # minute granularity is the finest interval supported by the SDK.
-    time_rule = f"{_RUN_CFG['session_start']}-{_RUN_CFG['session_end']}"
-    try:
-        schedule(on_schedule, date_rule="1d", time_rule=time_rule)
-        logger.info(
-            "[GM_TRADING] Schedule registered: date_rule=1d time_rule=%s",
-            time_rule,
-        )
-    except Exception as ex:
-        logger.exception("[GM_TRADING] schedule() failed: %s", ex)
-        raise
+    def _poll_loop():
+        while True:
+            try:
+                on_schedule(context)
+            except Exception as ex:
+                logger.exception("[GM_TRADING] poll loop error: %s", ex)
+            import time as _t
+            _t.sleep(1)
+
+    t = threading.Thread(target=_poll_loop, name="order-poll", daemon=True)
+    t.start()
+    logger.info("[GM_TRADING] Order poll thread started (1s interval)")
 
     _initialized.set()
     logger.info("[GM_TRADING] GM trading service initialized successfully")
 
 
 def on_schedule(context):
-    """Drain the request queue and submit each order via `order_volume`.
-
-    Runs on the strategy thread (the only thread from which trading calls
-    may be issued).
-    """
+    """Drain REQUEST_QUEUE and submit each order via `order_volume`."""
     from gm.api import order_volume
 
     drained = 0
@@ -119,8 +106,7 @@ def on_schedule(context):
 
 
 def _submit_order(order_volume_fn, job: PlaceOrderJob) -> None:
-    """Call order_volume on the strategy thread, then register the Future under
-    the returned cl_ord_id. Final-state orders resolve the Future immediately."""
+    """Place an order and block until it reaches a terminal state (or 30s timeout)."""
     logger.info(
         "[GM_TRADING] Placing order: order_id=%s symbol=%s side=%d type=%d qty=%d @ %.4f account=%s",
         job.order_id,
@@ -131,6 +117,11 @@ def _submit_order(order_volume_fn, job: PlaceOrderJob) -> None:
         job.price,
         job.account or "(default)",
     )
+
+    # Register before order_volume: the SDK may dispatch on_order_status from a
+    # separate thread during the call. Keyed under our own order_id; the callback
+    # falls back to pop_any() when the server-assigned cl_ord_id does not match.
+    PENDING_ORDERS.register(job.order_id, job.future)
 
     order = order_volume_fn(
         symbol=job.gm_symbol,
@@ -144,6 +135,7 @@ def _submit_order(order_volume_fn, job: PlaceOrderJob) -> None:
 
     if order is None:
         # SDK reported failure synchronously
+        PENDING_ORDERS.remove(job.order_id)
         if not job.future.done():
             job.future.set_exception(
                 RuntimeError("GM order_volume returned None (rejected by SDK)")
@@ -158,19 +150,31 @@ def _submit_order(order_volume_fn, job: PlaceOrderJob) -> None:
         getattr(order, "symbol", "?"),
     )
 
-    # Register Future so on_order_status can resolve it. If the order is
-    # already final, resolve immediately (don't wait for a callback).
-    PENDING_ORDERS.register(cl_ord_id, job.future)
-
     if order_enums.is_gm_status_final(int(getattr(order, "status", 0))):
         logger.info(
             "[GM_TRADING] Order already final: cl_ord_id=%s status=%s",
             cl_ord_id,
             order.status,
         )
+        PENDING_ORDERS.remove(job.order_id)
         if not job.future.done():
             job.future.set_result(order)
-        PENDING_ORDERS.remove(cl_ord_id)
+        return
+
+    # Block until on_order_status resolves the Future. This serializes order
+    # processing so at most one order is in-flight, keeping pop_any() safe.
+    try:
+        order = job.future.result(timeout=30)
+        logger.info(
+            "[GM_TRADING] Order resolved via callback: cl_ord_id=%s status=%s",
+            cl_ord_id,
+            getattr(order, "status", "?"),
+        )
+    except Exception as ex:
+        PENDING_ORDERS.remove(job.order_id)
+        if not job.future.done():
+            job.future.set_exception(ex)
+        raise
 
 
 # ---------- GM SDK event callbacks ----------
@@ -196,19 +200,36 @@ def on_order_status(context, order):
 
     future = PENDING_ORDERS.get(cl_ord_id)
     if future is None:
-        logger.debug(
-            "[GM_TRADING] No pending Future for cl_ord_id=%s (likely query-only)",
-            cl_ord_id,
+        # Server may assign a different cl_ord_id than the client-supplied one.
+        # Fall back to the single in-flight Future (orders are processed serially).
+        entry = PENDING_ORDERS.pop_any()
+        if entry is None:
+            logger.debug(
+                "[GM_TRADING] No pending Future for cl_ord_id=%s (likely query-only)",
+                cl_ord_id,
+            )
+            return
+        registered_id, future = entry
+        logger.info(
+            "[GM_TRADING] cl_ord_id mismatch (callback=%s, registered=%s); resolving by fallback",
+            cl_ord_id, registered_id,
         )
-        return
 
     if not order_enums.is_gm_status_final(int(status)):
-        # Submitted / PartiallyFilled / etc — keep waiting
+        # Not terminal yet; re-register so subsequent callbacks can still find it.
+        PENDING_ORDERS.register(cl_ord_id, future)
         return
 
     if not future.done():
         future.set_result(order)
     PENDING_ORDERS.remove(cl_ord_id)
+
+    if int(status) == order_enums.OrderStatus_Rejected:
+        reason = getattr(order, "ord_rej_reason", "") or getattr(order, "reject_reason", "") or "(no reason field)"
+        logger.warning(
+            "[GM_TRADING] Order REJECTED: cl_ord_id=%s symbol=%s reason=%s",
+            cl_ord_id, symbol, reason,
+        )
     logger.info(
         "[GM_TRADING] Order completed, removed from pending list: cl_ord_id=%s",
         cl_ord_id,
@@ -235,17 +256,16 @@ def on_backtest_finished(context, indicator):
     logger.info("[GM_TRADING] Backtest finished (not applicable in live mode)")
 
 
-# ---------- Direct trading calls (used by gRPC query handlers) ----------
-#
-# These query functions are safe to call from any thread per the C# implementation
-# (GetCash/GetPosition/GetOrders don't modify state). If the Python SDK turns out
-# to be stricter, the call sites fall back to enqueuing onto REQUEST_QUEUE.
+# Direct query helpers (called by gRPC query handlers).
+# Safe from any thread (no state mutation), mirroring the C# implementation.
 
 
 def query_cash(account: str):
-    """Query cash balance for the given account."""
+    """Query cash balance. Wraps the single DictLikeObject returned by the SDK
+    in a list so callers can iterate uniformly."""
     from gm.api import get_cash
-    return get_cash(account_id=account or None)
+    result = get_cash(account_id=account or None)
+    return [result] if result is not None else []
 
 
 def query_position(account: str):

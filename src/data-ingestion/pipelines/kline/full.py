@@ -1,8 +1,6 @@
-"""Full K-line back-fill (mirrors C# `data_ingestion.IngestData` + `IngestDailyData`).
-
-Reuses Phase 1 modules; instead of an incremental window, iterates the configured
-year range (minute bars, per-year files) and writes daily bars to one file per symbol.
-ClickHouse is overwritten via delete-then-insert for the requested date range.
+"""Full K-line back-fill. Iterates the configured year range (minute bars,
+per-year files) and writes daily bars to one file per symbol. ClickHouse is
+overwritten via delete-then-insert for the requested date range.
 """
 from __future__ import annotations
 
