@@ -96,6 +96,9 @@ data:
       - job_name: 'market-data-gm-metrics'
         static_configs:
           - targets: ['market-data-gm.trading-platform:8000']
+      - job_name: 'k8s-status-exporter'
+        static_configs:
+          - targets: ['k8s-status-exporter.infrastructure:9309']
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
