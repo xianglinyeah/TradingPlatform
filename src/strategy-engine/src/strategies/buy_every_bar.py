@@ -14,6 +14,15 @@ from ..execution import Signal
 class BuyEveryBarStrategy(BaseStrategy):
     """Buy on every minute bar strategy - for testing end-to-end trading pipeline"""
 
+    DISPLAY_NAME = "Buy Every Bar (smoke test)"
+    DESCRIPTION = "Places a buy order on every received bar until max_position is reached. Test only."
+    PARAMS_SCHEMA = [
+        {"key": "quantity", "label": "Quantity per bar", "type": "int",
+         "default": 100, "min": 1, "max": 10000, "step": 1},
+        {"key": "max_position", "label": "Max position", "type": "int",
+         "default": 1000, "min": 1, "max": 100000, "step": 1},
+    ]
+
     def __init__(self, name: str = "buy_every_bar", symbols: list = None,
                  exclude_symbols: list = None, params: dict = None):
         """

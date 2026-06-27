@@ -1,0 +1,83 @@
+# Dashboard.Web Deployment
+# Image build: docker build -t docker-dashboard-web:latest react/dashboard-web/
+#
+# nginx-served React build. Proxies /api/ to dashboard-service:8080 so
+# the browser only needs to talk to one origin (no CORS in prod).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-web
+  namespace: trading-platform
+  labels:
+    app: dashboard-web
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-web
+  template:
+    metadata:
+      labels:
+        app: dashboard-web
+        version: v1
+    spec:
+      containers:
+      - name: dashboard-web
+        image: docker-dashboard-web:latest
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+
+        # nginx serves static files; if the pod is up, it's ready.
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          failureThreshold: 3
+
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+
+      restartPolicy: Always
+
+---
+# LoadBalancer Service for Dashboard.Web.
+# Service port 8888 chosen so Rancher Desktop auto-forwards it to
+# localhost:8888 (must avoid conflicts: kafka-ui uses 8080, grafana 3000,
+# traefik claims 80). nginx still listens on 80 inside the container.
+#
+# Access from host: http://localhost:8888
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-web
+  namespace: trading-platform
+  labels:
+    app: dashboard-web
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8888
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: dashboard-web

@@ -16,6 +16,14 @@ from ..data import BarData
 from ..config import load_config
 from .base_engine import BaseEngine
 
+# RunRegistry is optional in research/local mode; required for hot-load.
+try:
+    from ..run import RunStatus, UnknownRunError, get_global_registry
+    RUN_REGISTRY_AVAILABLE = True
+except ImportError:
+    RUN_REGISTRY_AVAILABLE = False
+    UnknownRunError = KeyError  # type: ignore
+
 # Import Context and HistoryStore for daily data support
 try:
     from ..context import Context, HistoryStore
@@ -120,11 +128,24 @@ class LiveEngine(BaseEngine):
         self.signals_generated = 0
         self.start_time = None
 
+        # Run registry (hot-loaded runs) - optional but usually present.
+        # When a bar arrives with a SessionId that matches a registered run,
+        # we route to that run's isolated strategy instance instead of the
+        # config-loaded defaults below.
+        self.run_registry = get_global_registry() if RUN_REGISTRY_AVAILABLE else None
+        # Cache the executor's currently-active session_id so we only call
+        # update_session_id on actual changes (avoids log spam).
+        self._current_executor_session_id: Optional[str] = self.executor.session_id
+        # Per-run symbol matchers, lazily built when a run is registered.
+        self._run_matchers: Dict[str, object] = {}
+
         logger.info("LiveEngine initialized (Kafka + gRPC mode)")
         logger.info(f"Kafka: {self.kafka_brokers}, topic: {self.kafka_topic}")
         logger.info(f"Loaded {len(self.strategies)} strategies")
         for strategy in self.strategies:
             logger.info(f"  - {strategy.name}: {strategy.symbols}")
+        if self.run_registry is not None:
+            logger.info("RunRegistry available - per-run hot-load routing ENABLED")
 
     def update_session_id(self, session_id: str):
         """
@@ -181,10 +202,17 @@ class LiveEngine(BaseEngine):
             close_price = data.get('close') or data.get('Close') or data.get('c')
             volume = data.get('volume') or data.get('Volume') or data.get('vol') or data.get('v')
 
+            # Routing metadata - both optional. Source distinguishes
+            # Simulation (replay) from GM (live). SessionId is the
+            # run_id we dispatch on (see RunRegistry).
+            session_id = data.get('sessionId') or data.get('SessionId') or data.get('session_id')
+            source = data.get('source') or data.get('Source')
+
             if not symbol:
                 raise ValueError(f"No symbol field found in data: {data}")
 
-            logger.info(f"[KAFKA_MSG_PARSE] symbol={symbol}, timestamp_str={timestamp_str}")
+            logger.info(f"[KAFKA_MSG_PARSE] symbol={symbol}, timestamp_str={timestamp_str}, "
+                        f"session_id={session_id}, source={source}")
 
             # Parse timestamp
             if isinstance(timestamp_str, str):
@@ -203,7 +231,9 @@ class LiveEngine(BaseEngine):
                 high=float(high_price) if high_price else 0.0,
                 low=float(low_price) if low_price else 0.0,
                 close=float(close_price) if close_price else 0.0,
-                volume=float(volume) if volume else 0.0
+                volume=float(volume) if volume else 0.0,
+                session_id=session_id,
+                source=source,
             )
         except Exception as e:
             logger.error(f"Failed to parse Kafka message: {e}")
@@ -247,17 +277,7 @@ class LiveEngine(BaseEngine):
                     if bar is None:
                         continue
 
-                    all_signals = []
-                    for strategy in self.strategies:
-                        matcher = self.symbol_matchers[strategy.name]
-                        if not matcher.matches(bar.symbol):
-                            continue
-
-                        with metrics.bar_processing_duration.labels(strategy_name=strategy.name).time():
-                            signals = strategy.on_bar(bar)
-                        if signals:
-                            all_signals.extend(signals)
-                        metrics.bars_processed.labels(symbol=bar.symbol).inc()
+                    all_signals = self._route_bar(bar)
 
                     self.bars_processed += 1
 
@@ -272,21 +292,12 @@ class LiveEngine(BaseEngine):
                                 f"@ {bar.close:.2f} - {signal.reason}"
                             )
 
-                        # Execute signals
+                        # Execute signals - executor.session_id is kept in sync
+                        # with the run we just routed to inside _route_bar.
                         filled_orders = self.executor.execute_signals(all_signals, bar)
 
-                        # Notify strategies of fills
-                        for order in filled_orders:
-                            # Find the strategy that placed this order
-                            for strategy in self.strategies:
-                                if strategy.name == order.strategy_id:
-                                    strategy.on_order_filled(order)
-                                    break
-
-                            logger.info(
-                                f"[{order.strategy_id}] Filled: {order.side.upper()} {order.quantity} "
-                                f"{order.symbol} @ {order.avg_price:.2f}"
-                            )
+                        # Notify the originating strategy instances of fills.
+                        self._dispatch_fills(filled_orders, bar)
 
                     # Log status periodically
                     if self.bars_processed % 100 == 0:
@@ -312,6 +323,155 @@ class LiveEngine(BaseEngine):
             f"Position: {position.quantity} | "
             f"PnL: {position.total_pnl(current_bar.close):.2f}"
         )
+
+    # ------------------------------------------------------------------
+    # Per-run routing (hot-loaded strategies)
+    # ------------------------------------------------------------------
+
+    def _route_bar(self, bar: BarData) -> List:
+        """Decide which strategy instance(s) process this bar.
+
+        Two paths:
+
+        1. Per-run path (preferred when RunRegistry is available AND the
+           bar's SessionId is registered). We dispatch to that run's
+           isolated strategy instance and switch the executor's
+           session_id so orders land in the right Execution.Service
+           session.
+
+        2. Default path (legacy). Bar is routed to every config-loaded
+           strategy whose SymbolMatcher accepts it. This preserves the
+           pre-hot-load behaviour for live GM traffic and for any
+           simulation that did not pre-register its run_id.
+
+        Returning an empty list means "no signal this bar".
+        """
+        # Try per-run routing first.
+        if self.run_registry is not None and bar.session_id and \
+                self.run_registry.has(bar.session_id):
+            ctx = self.run_registry.get(bar.session_id)
+
+            # Symbol filter at the run level.
+            matcher = self._get_or_create_run_matcher(ctx)
+            if not matcher.matches(bar.symbol):
+                return []
+
+            # Switch the executor session so subsequent gRPC SubmitOrder
+            # calls carry this run's identifier. Cheap when unchanged.
+            self._sync_executor_session(ctx.run_id)
+
+            ctx.touch()
+            ctx.bars_processed += 1
+            with metrics.bar_processing_duration.labels(
+                strategy_name=ctx.strategy_name
+            ).time():
+                signals = ctx.strategy_instance.on_bar(bar)
+            if signals:
+                ctx.signals_generated += len(signals)
+                metrics.bars_processed.labels(symbol=bar.symbol).inc()
+            return signals or []
+
+        # Default path (also reached when a bar's session_id is not registered,
+        # e.g. a replay started directly without going through Dashboard.Service).
+        # We DO NOT drop the bar - that would break the smoke test, the live GM
+        # feed, and any pre-existing replay workflow. Instead we fall back to
+        # the config-loaded default strategies and log a one-shot hint so users
+        # know hot-load is available.
+        if self.run_registry is not None and bar.session_id and bar.source == "Simulation":
+            # Log at debug to avoid spam - every replay bar without a registered
+            # run_id hits this. Real spec violations (Dashboard.Service forgot
+            # to register) are rare and surface as "no trades" anyway.
+            logger.debug(
+                "Bar for unregistered run_id=%s falling back to default strategies. "
+                "Register via POST /runs/%s/config for per-run isolation.",
+                bar.session_id, bar.session_id,
+            )
+
+        # Default path: fan out to config-loaded strategies.
+        all_signals = []
+        for strategy in self.strategies:
+            matcher = self.symbol_matchers[strategy.name]
+            if not matcher.matches(bar.symbol):
+                continue
+            with metrics.bar_processing_duration.labels(
+                strategy_name=strategy.name
+            ).time():
+                signals = strategy.on_bar(bar)
+            if signals:
+                all_signals.extend(signals)
+            metrics.bars_processed.labels(symbol=bar.symbol).inc()
+        return all_signals
+
+    def _get_or_create_run_matcher(self, ctx):
+        """Cache a SymbolMatcher per run_id. Matcher construction is
+        cheap but called per-bar, so memoize on run_id."""
+        from ..utils.symbol_matcher import SymbolMatcher
+
+        matcher = self._run_matchers.get(ctx.run_id)
+        if matcher is None:
+            matcher = SymbolMatcher(ctx.symbols, ctx.exclude_symbols)
+            self._run_matchers[ctx.run_id] = matcher
+        return matcher
+
+    def _sync_executor_session(self, session_id: str) -> None:
+        """Update the executor's session_id only on actual change.
+
+        The executor stamps session_id onto every gRPC order/position
+        request. For multi-run isolation it must match the run that
+        produced the signal. We avoid spamming the log when consecutive
+        bars come from the same run.
+        """
+        if session_id == self._current_executor_session_id:
+            return
+        if hasattr(self.executor, "update_session_id"):
+            self.executor.update_session_id(session_id)
+            self._current_executor_session_id = session_id
+
+    def _dispatch_fills(self, filled_orders, bar: BarData) -> None:
+        """Notify the originating strategy instance of each fill.
+
+        For per-run orders, strategy_id on the order is
+        "<class_name>::<run_id>" (set by RunRegistry.register). We
+        resolve it back to the run's strategy instance.
+
+        For default-path orders, strategy_id is the config strategy name
+        and we look it up in self.strategies as before.
+        """
+        for order in filled_orders:
+            strategy_instance = self._resolve_strategy_instance(order.strategy_id)
+            if strategy_instance is not None:
+                strategy_instance.on_order_filled(order)
+
+            logger.info(
+                f"[{order.strategy_id}] Filled: {order.side.upper()} {order.quantity} "
+                f"{order.symbol} @ {order.avg_price:.2f}"
+            )
+
+    def _resolve_strategy_instance(self, strategy_id: str):
+        """Find the strategy instance that produced an order.
+
+        strategy_id format from RunRegistry is "<class>::<run_id>";
+        from default strategies it is the bare strategy name.
+        """
+        # Per-run: "<class>::<run_id>"
+        if "::" in strategy_id and self.run_registry is not None:
+            run_id = strategy_id.split("::", 1)[1]
+            try:
+                ctx = self.run_registry.get(run_id)
+                return ctx.strategy_instance
+            except UnknownRunError:
+                # The run was swept between signal and fill - log and
+                # fall through to the default lookup.
+                logger.warning(
+                    "Run gone before fill notification: strategy_id=%s",
+                    strategy_id,
+                )
+
+        # Default path
+        for strategy in self.strategies:
+            if strategy.name == strategy_id:
+                return strategy
+        return None
 
     def _print_final_report(self):
         """Print final report"""

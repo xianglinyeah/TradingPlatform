@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class BaseStrategy(ABC):
     """Abstract Base Class for Trading Strategies"""
 
+    # Metadata for hot-loading UI. Subclasses override these.
+    # PARAMS_SCHEMA entries follow the shape consumed by Dashboard.Web's
+    # dynamic form renderer: {key, label, type, default, min, max, step?}
+    PARAMS_SCHEMA: List[dict] = []
+    DISPLAY_NAME: str = ""
+    DESCRIPTION: str = ""
+
     def __init__(self, name: str, symbols: Optional[List[str]] = None,
                  exclude_symbols: Optional[List[str]] = None, params: Optional[dict] = None):
         """

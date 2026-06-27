@@ -1,5 +1,9 @@
 # Complete StrategyEngine Deployment
 # Image rebuild: docker build -t docker-strategy-engine:latest src/strategy-engine/
+#
+# Runs in `hot` mode: same Kafka consumer + gRPC executor as `live`, plus
+# the run-control FastAPI on :8080 so Dashboard.Service can register
+# per-run_id strategy configs. Port 8080 is exposed via the Service below.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,13 +29,33 @@ spec:
         imagePullPolicy: IfNotPresent
 
         # STRATEGY_CONFIG is read from env-selector (live.yaml / e2e.yaml).
+        # `hot` mode = live engine + run-control HTTP API on :8080 for
+        # Dashboard.Service orchestration.
         command: ["/bin/sh", "-c"]
-        args: ["exec python main.py live --config config/$STRATEGY_CONFIG"]
+        args: ["exec python main.py hot --config config/$STRATEGY_CONFIG"]
 
         ports:
         - containerPort: 8080
           name: http
           protocol: TCP
+
+        # Liveness/readiness probe the run-control API. The Kafka engine
+        # itself has no HTTP surface, so we probe the FastAPI /health
+        # which lives as long as the process does.
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
 
         env:
         # Kafka configuration

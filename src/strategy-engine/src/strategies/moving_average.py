@@ -20,6 +20,22 @@ class MovingAverageStrategy(BaseStrategy):
     - Take Profit: +1.2% from entry price
     """
 
+    DISPLAY_NAME = "EMA Crossover (Stop-Loss/Take-Profit)"
+    DESCRIPTION = (
+        "Buy when close falls below EMA by a threshold; "
+        "exit via stop-loss or take-profit."
+    )
+    PARAMS_SCHEMA = [
+        {"key": "ema_period", "label": "EMA Period", "type": "int",
+         "default": 10, "min": 2, "max": 200, "step": 1},
+        {"key": "buy_threshold", "label": "Buy Threshold (deviation)",
+         "type": "float", "default": -0.005, "min": -0.2, "max": 0.0, "step": 0.001},
+        {"key": "stop_loss_pct", "label": "Stop Loss %",
+         "type": "float", "default": -0.008, "min": -0.5, "max": 0.0, "step": 0.001},
+        {"key": "take_profit_pct", "label": "Take Profit %",
+         "type": "float", "default": 0.012, "min": 0.0, "max": 0.5, "step": 0.001},
+    ]
+
     def __init__(self, name: str = "MovingAverage", symbols: list = None,
                  exclude_symbols: list = None, params: dict = None):
         """
