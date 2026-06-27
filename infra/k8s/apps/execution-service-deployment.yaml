@@ -1,5 +1,5 @@
 # ExecutionService Deployment for Kubernetes
-# Image rebuild: docker build -t docker-execution-service:latest src/Execution.Service/
+# Image rebuild: docker build -t docker-execution-service:latest src/execution-service/
 apiVersion: apps/v1
 kind: Deployment
 metadata:

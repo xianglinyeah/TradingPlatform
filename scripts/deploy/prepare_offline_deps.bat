@@ -17,7 +17,7 @@ cd /d %PROJECT_ROOT%
 REM 1. C# dependency preparation
 echo.
 echo [1/2] Preparing C# dependencies...
-cd src\Execution.Service
+cd src\execution-service
 
 echo   Cleaning old build...
 if exist bin rmdir /s /q bin

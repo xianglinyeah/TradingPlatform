@@ -13,13 +13,13 @@ echo "📁 Project root: $PROJECT_ROOT"
 
 # 2. Build C# project
 echo "🔨 Building Execution.Service..."
-cd src/Execution.Service
+cd src/execution-service
 dotnet publish -c Release -o bin/Release/net8.0/publish
 
 # 3. Build Docker image
 echo "🐳 Building Docker image..."
 cd "$PROJECT_ROOT"
-docker build -t docker-execution-service:latest src/Execution.Service/
+docker build -t docker-execution-service:latest src/execution-service/
 
 # 4. Export image as tar file (avoid network issues)
 echo "📦 Exporting Docker image..."

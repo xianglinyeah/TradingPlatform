@@ -12,7 +12,7 @@ echo "📁 Project root: $PROJECT_ROOT"
 
 # 1. C# dependency download (NuGet package cache)
 echo "📦 Preparing C# dependencies..."
-cd "$PROJECT_ROOT/src/Execution.Service"
+cd "$PROJECT_ROOT/src/execution-service"
 
 echo "  🔨 Cleaning old build results..."
 rm -rf bin/ obj/
@@ -79,7 +79,7 @@ echo ""
 echo "🎉 Offline dependency preparation completed!"
 echo ""
 echo "📊 Dependency summary:"
-echo "   C# publish directory: $PROJECT_ROOT/src/Execution.Service/bin/Release/net8.0/publish"
+echo "   C# publish directory: $PROJECT_ROOT/src/execution-service/bin/Release/net8.0/publish"
 echo "   Python dependencies: $PROJECT_ROOT/src/strategy-engine/local-packages"
 echo ""
 echo "🚀 Next step: Run deployment script"

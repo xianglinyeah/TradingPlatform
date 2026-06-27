@@ -24,7 +24,7 @@ class DevCommand:
 
     NAMESPACE = "trading-platform"
     SERVICES = {
-        "execution-service":      {"src": "src/Execution.Service",    "dotnet": True},
+        "execution-service":      {"src": "src/execution-service",    "dotnet": True},
         "market-data-replay":     {"src": "src/market-data-replay",   "dotnet": True},
         "strategy-engine":        {"src": "src/strategy-engine",      "dotnet": False},
         "market-data-gm":         {"src": "src/market-data-gm",       "dotnet": False},

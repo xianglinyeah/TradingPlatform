@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Execution.Service", "src\Execution.Service\Execution.Service.csproj", "{DC222DFA-F70F-4485-B282-E4BEB13D0629}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Execution.Service", "src\execution-service\Execution.Service.csproj", "{DC222DFA-F70F-4485-B282-E4BEB13D0629}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketData.Replay", "src\market-data-replay\MarketData.Replay.csproj", "{5AD314E3-D3D5-4CA4-82FA-04A9D9288A78}"
 EndProject

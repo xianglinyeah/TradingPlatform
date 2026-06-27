@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Execution.Service\Execution.Service.csproj" />
+    <ProjectReference Include="..\..\src\execution-service\Execution.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
