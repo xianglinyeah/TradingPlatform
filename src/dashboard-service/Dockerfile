@@ -1,13 +1,14 @@
 # Dashboard.Service - FastAPI backend for Dashboard.Web
-# Uses python:3.12-slim (already cached locally on this host). Pure-Python
-# deps so 3.11 vs 3.12 doesn't matter; 3.12 avoids an extra base-image pull.
-FROM python:3.12-slim AS base
+# Offline build pattern: wheels are pre-downloaded as cp312 manylinux into
+# artifacts/wheels/ by scripts/deploy/dashboard_service.sh and installed
+# with --no-index so the build needs no network.
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies first to leverage Docker layer caching.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies from pre-downloaded Linux wheels (no network needed).
+COPY artifacts/wheels/ /wheels/
+RUN pip install --no-cache-dir --no-index /wheels/*.whl && rm -rf /wheels
 
 # Copy the package.
 COPY dashboard_service/ ./dashboard_service/

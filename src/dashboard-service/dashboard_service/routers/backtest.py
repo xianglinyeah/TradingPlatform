@@ -25,7 +25,8 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Any
+from datetime import date
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -60,7 +61,33 @@ async def run_backtest(req: BacktestRunRequest) -> BacktestRunResponse:
     Implements the 3-step ordering described in the module docstring.
     Any failure between steps is recorded on the runs row so the user
     can see why their backtest never started.
+
+    Symbols source: exactly one of `symbols` or `universe_id` must be set.
+    When `universe_id` is used, membership is resolved from
+    market_ref.universe_member at start_date (point-in-time correct).
     """
+    # Validate: exactly one of symbols / universe_id must be set.
+    resolved_symbols: Optional[list[str]] = None
+    if req.universe_id and req.symbols:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either `symbols` or `universe_id`, not both.",
+        )
+    if not req.universe_id and not req.symbols:
+        raise HTTPException(
+            status_code=422,
+            detail="Either `symbols` or `universe_id` must be set.",
+        )
+    if req.universe_id:
+        resolved_symbols = await _resolve_universe_symbols(req.universe_id, req.start_date)
+        if not resolved_symbols:
+            raise HTTPException(
+                status_code=422,
+                detail=f"universe_id={req.universe_id!r} resolved to 0 symbols as of {req.start_date}",
+            )
+    else:
+        resolved_symbols = list(req.symbols or [])
+
     # We don't know the run_id until market-data-replay generates it,
     # but we want an audit row BEFORE making any service calls. Use a
     # temporary UUID; we'll patch it onto the row after step 3.
@@ -76,7 +103,7 @@ async def run_backtest(req: BacktestRunRequest) -> BacktestRunResponse:
         audit_id,
         req.strategy_name,
         json.dumps(req.strategy_params),
-        req.symbols,
+        resolved_symbols,
         req.start_date,
         req.end_date,
         req.speed,
@@ -106,7 +133,7 @@ async def run_backtest(req: BacktestRunRequest) -> BacktestRunResponse:
     # Step 2a: start replay, capture the SessionId.
     try:
         replay_resp = await marketdata_replay_client.start_replay(
-            symbols=req.symbols,
+            symbols=resolved_symbols,
             start_time=f"{req.start_date}T09:30:00",
             end_time=f"{req.end_date}T15:00:00",
             speed_factor=req.speed,
@@ -131,7 +158,7 @@ async def run_backtest(req: BacktestRunRequest) -> BacktestRunResponse:
             run_id=session_id,
             strategy_name=req.strategy_name,
             params=req.strategy_params,
-            symbols=req.symbols,
+            symbols=resolved_symbols,
         )
     except Exception as exc:
         # Best-effort cleanup of the dangling replay session.
@@ -398,3 +425,21 @@ def _loads(v: Any) -> dict:
         return json.loads(v)
     except Exception:
         return {}
+
+
+async def _resolve_universe_symbols(universe_id: str, start_date: str) -> list[str]:
+    """Resolve universe members from market_ref as of start_date (point-in-time)."""
+    try:
+        as_of = date.fromisoformat(start_date[:10])
+    except ValueError:
+        as_of = date.today()
+    rows = await postgres_pool.fetch(
+        "SELECT symbol FROM market_ref.universe_member "
+        "WHERE universe_id = $1 "
+        "  AND effective_from <= $2 "
+        "  AND (effective_to IS NULL OR effective_to >= $2) "
+        "ORDER BY symbol",
+        universe_id,
+        as_of,
+    )
+    return [r["symbol"] for r in rows]

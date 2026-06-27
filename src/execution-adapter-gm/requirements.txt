@@ -1,6 +1,8 @@
 gm==3.0.184
 # gm SDK pins protobuf<4.0 — keep grpcio-tools aligned with that constraint.
+# Lower bound tightened to 3.20.3 to match the runtime used by strategy-engine
+# and the toolchain that regenerated the stubs in protos/.
 grpcio>=1.49.0
-grpcio-tools>=1.49.0
-protobuf>=3.19.0,<4.0
+protobuf>=3.20.3,<4.0
 pyyaml>=6.0
+# grpcio-tools is NOT here: build-time only (regenerates stubs from .proto).

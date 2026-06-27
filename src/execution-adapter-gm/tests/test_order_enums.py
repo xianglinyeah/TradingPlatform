@@ -14,7 +14,13 @@ GM SDK side:
   OrderType:   2=Market, 1=Limit, 3=Stop
 """
 import pytest
-from gm.api import (
+
+# The gm SDK is required to read canonical Side/OrderType constants.
+# In environments without gm installed (e.g. CI running the shared
+# strategy-engine venv), skip the entire module instead of erroring
+# during collection.
+gm = pytest.importorskip("gm")
+from gm.api import (  # noqa: E402
     OrderSide_Buy,
     OrderSide_Sell,
     OrderType_Limit,

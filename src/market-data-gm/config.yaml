@@ -1,8 +1,13 @@
 # Token is loaded from env var GM_TOKEN (see config.py).
 # Set it in your shell: $env:GM_TOKEN = "<your token>"
+#
+# Subscription symbols: prefer `universe_id` (resolved from market_ref at
+# startup via UNIVERSE_PG_CONN env var). The explicit `symbols:` list is
+# kept as a fallback for environments without PG access.
 gm:
   token: "${GM_TOKEN}"
   address: "127.0.0.1:7001"
+  universe_id: "csi300"
   symbols:
     - "SHSE.600000"
     - "SHSE.600019"

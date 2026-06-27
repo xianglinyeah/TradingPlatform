@@ -127,6 +127,28 @@ def history_bars_batch(
 
 
 # ============================================================
+#  Index Constituents (universe membership)
+# ============================================================
+
+def get_index_constituents(index: str, trade_date: Optional[str] = None) -> List[dict]:
+    """Fetch index constituents as of trade_date (YYYY-MM-DD string or None=latest).
+
+    Wraps `stk_get_index_constituents`. Returns list of dicts with keys
+    including `symbol` (GM format like 'SHSE.600000'), `weight`, `trade_date`.
+    Empty list if the index has no constituents on the given date (e.g.
+    non-trading day).
+    """
+    sdk = _sdk()
+    kwargs = {"index": index, "df": True}
+    if trade_date is not None:
+        kwargs["trade_date"] = trade_date
+    df = sdk.stk_get_index_constituents(**kwargs)
+    if df is None or len(df) == 0:
+        return []
+    return df.to_dict("records")
+
+
+# ============================================================
 #  Fundamentals — Pt (multi-symbol, single-day cross-section)
 # ============================================================
 

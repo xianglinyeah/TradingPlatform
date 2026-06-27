@@ -54,23 +54,30 @@ class MarketDataReplayClient:
 
     async def start_replay(
         self,
-        symbols: list[str],
-        start_time: str,
-        end_time: str,
+        symbols: Optional[list[str]] = None,
+        start_time: str = "",
+        end_time: str = "",
         speed_factor: float = 1000.0,
+        universe_id: Optional[str] = None,
     ) -> dict:
         """POST /api/Replay/start.
 
         market-data-replay generates the SessionId server-side; we
         return it so the orchestrator can use it as the run_id
         (per the ADR: run_id == SessionId).
+
+        Either `symbols` (explicit list) or `universe_id` (resolved
+        point-in-time by the replay service from market_ref) must be
+        provided. When both are passed, Symbols wins.
         """
-        body = {
-            "Symbols": symbols,
+        body: dict[str, Any] = {
+            "Symbols": symbols or [],
             "StartTime": start_time,
             "EndTime": end_time,
             "SpeedFactor": speed_factor,
         }
+        if universe_id:
+            body["UniverseId"] = universe_id
         # The C# controller uses PascalCase JSON by default.
         resp = await self.client.post("/api/Replay/start", json=body)
         resp.raise_for_status()

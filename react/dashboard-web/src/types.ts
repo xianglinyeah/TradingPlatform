@@ -39,6 +39,23 @@ export interface SymbolsResponse {
   symbols: SymbolHit[];
 }
 
+export interface UniverseInfo {
+  universe_id: string;
+  name: string;
+  source_index: string | null;
+  description: string | null;
+}
+
+export interface UniversesListResponse {
+  universes: UniverseInfo[];
+}
+
+export interface UniverseMembersResponse {
+  universe_id: string;
+  count: number;
+  symbols: string[];
+}
+
 export interface StrategyParamSchema {
   key: string;
   label: string;
@@ -64,7 +81,8 @@ export interface StrategiesResponse {
 export interface BacktestRunRequest {
   start_date: string;
   end_date: string;
-  symbols: string[];
+  symbols?: string[];
+  universe_id?: string;
   speed: number;
   strategy_name: string;
   strategy_params: Record<string, number | string | boolean>;

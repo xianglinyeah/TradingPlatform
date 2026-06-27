@@ -1,5 +1,5 @@
 """Live Trading Engine (Kafka + gRPC)"""
-from kafka import KafkaConsumer
+from confluent_kafka import Consumer
 import json
 import logging
 from datetime import datetime
@@ -248,30 +248,45 @@ class LiveEngine(BaseEngine):
 
         self.start_time = datetime.now()
 
-        # Create Kafka consumer with improved configuration
-        consumer = KafkaConsumer(
-            self.kafka_topic,
-            bootstrap_servers=self.kafka_brokers,
-            group_id=self.kafka_group_id,
+        # Create Kafka consumer using confluent-kafka (librdkafka-based, same
+        # library used by market-data-gm). Configuration matches the previous
+        # kafka-python settings: auto-commit on, earliest offset reset for new
+        # groups, and the same session/heartbeat timeouts.
+        consumer = Consumer({
+            'bootstrap.servers': self.kafka_brokers,
+            'group.id': self.kafka_group_id,
             # 'earliest' avoids silent message loss for a new group_id or
             # expired offsets; once offsets are committed this is unused.
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            api_version=(2, 6, 0),  # Specify Kafka version to avoid compression issues
-            # Removed consumer_timeout_ms for production - run indefinitely
-            session_timeout_ms=180000,  # Session timeout 3 minutes (increased from 30s)
-            heartbeat_interval_ms=10000  # Heartbeat interval 10 seconds (increased from 3s)
-        )
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': True,
+            'session.timeout.ms': 180000,    # 3 minutes (was 30s originally)
+            'heartbeat.interval.ms': 10000,  # 10 seconds (was 3s originally)
+            # Refresh topic metadata every 10s instead of librdkafka's 5-min
+            # default. Required for the smoke test, which deletes and recreates
+            # the topic to clear it: without a fast refresh, the consumer can
+            # sit on a stale "0 partitions" view for minutes after the topic
+            # reappears. Cheap in steady state (one metadata fetch per interval).
+            'topic.metadata.refresh.interval.ms': 10000,
+        })
+        consumer.subscribe([self.kafka_topic])
 
         logger.info(f"Connected to Kafka: {self.kafka_brokers}")
         logger.info("Waiting for market data...")
         logger.info("Press Ctrl+C to stop\n")
 
         try:
-            for message in consumer:
+            while True:
+                # poll() returns None on timeout; an error wrapper otherwise.
+                message = consumer.poll(timeout=1.0)
+                if message is None:
+                    continue
+                if message.error():
+                    logger.warning("kafka error: %s", message.error())
+                    continue
                 try:
-                    # Parse bar data
-                    bar = self.parse_kafka_message(message.value)
+                    # Parse bar data. confluent-kafka exposes the payload via
+                    # .value() (a method) rather than the kafka-python attribute.
+                    bar = self.parse_kafka_message(message.value())
 
                     # Control messages return None.
                     if bar is None:

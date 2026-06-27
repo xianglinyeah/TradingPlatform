@@ -3,10 +3,11 @@
 Usage: python main.py <config.yaml> --mode=<mode>
 
 Modes:
-    kline                     Full K-line back-fill (minute + daily → Parquet + ClickHouse)
+    kline                     Full K-line back-fill (minute + daily -> Parquet + ClickHouse)
     kline_incremental         Daily K-line incremental (minute + daily)
     fundamentals              Full fundamentals back-fill (8 tables)
     fundamentals_incremental  Pt multi-symbol incremental (8 tables)
+    universe_sync             Refresh market_ref.universe_member from GM SDK
 """
 from __future__ import annotations
 
@@ -67,7 +68,7 @@ def main(argv=None) -> int:
         elif mode_l == "kline_incremental":
             from pipelines.kline.incremental import load_symbols, run_incremental
             kcfg = cfg.kline_incremental
-            symbols = load_symbols(kcfg)
+            symbols = load_symbols(kcfg, cfg.storage.connection_string)
             run_incremental(kcfg, cfg.storage.connection_string, symbols)
         elif mode_l == "fundamentals":
             from pipelines.fundamentals.full import run_fundamentals_full
@@ -75,10 +76,13 @@ def main(argv=None) -> int:
         elif mode_l in ("fundamentals_incremental", "incremental", "incremental_pt"):
             from pipelines.fundamentals.incremental import run_fundamentals_incremental_pt
             run_fundamentals_incremental_pt(cfg, cfg.fundamentals_incremental)
+        elif mode_l == "universe_sync":
+            from pipelines.universe.sync import sync_universe
+            sync_universe(cfg.storage.connection_string)
         else:
             log.error(
                 "Unknown --mode=%s. Valid: kline | kline_incremental | "
-                "fundamentals | fundamentals_incremental",
+                "fundamentals | fundamentals_incremental | universe_sync",
                 mode,
             )
             return 2

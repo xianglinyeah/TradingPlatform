@@ -37,8 +37,21 @@ FREQ_DAILY = "1d"
 
 def _build_symbols(market_scope: MarketScopeConfig,
                    kcfg: KlineIncrementalConfig,
-                   data_cfg: DataConfig) -> List[str]:
-    """CUSTOM/CSI_ALL/SSE50/SZSE50 resolution. For CSI_ALL uses the daily_dir scan."""
+                   data_cfg: DataConfig,
+                   storage_conn_str: str) -> List[str]:
+    """Resolve symbols for kline_full.
+
+    Priority: universe_id (from PG market_ref) > CUSTOM > A_ALL/CSI_ALL.
+    Returns GM-format symbols suitable for the GM SDK.
+    """
+    # Universe-first: pull from market_ref.universe_member if configured.
+    universe_id = market_scope.universe_id or kcfg.universe_id
+    if universe_id:
+        from storage.universe import get_members_as_gm
+        syms = get_members_as_gm(storage_conn_str, universe_id)
+        logger.info("Symbol source universe_id=%s: %d symbols", universe_id, len(syms))
+        return syms
+
     scope = market_scope.scope_type.upper()
     if scope == "CUSTOM":
         syms = list(market_scope.custom_symbols) or list(kcfg.symbols)
@@ -64,7 +77,7 @@ def run_kline_full(market_scope: MarketScopeConfig,
         database=kcfg.clickhouse.database,
     )
 
-    symbols = _build_symbols(market_scope, kcfg, data_cfg)
+    symbols = _build_symbols(market_scope, kcfg, data_cfg, storage_conn_str)
     logger.info("=== K-line full back-fill starting: %d symbols, years %d-%d ===",
                 len(symbols), data_cfg.start_year, data_cfg.end_year)
 

@@ -12,10 +12,12 @@ storage:
   parquet_path: "D:/TradingPlatform/data/minute/1min"
   connection_string: "Host=localhost;Port=5432;Username=dev_user;Password=dev_pass;Database=dev"
 
-# Data fetch scope configuration
+# Data fetch scope configuration.
+# universe_id takes priority over scope_type/custom_symbols when set.
 market_scope:
   scope_type: "A_ALL"
   custom_symbols: []
+  universe_id: "a_all"
 
 # Data fetch configuration
 data:
@@ -30,11 +32,13 @@ processing:
   delay_between_requests: 500
 
 # Fundamentals backfill configuration (20-year A-share financial/valuation/market-cap)
+# universe_id takes priority over symbol_source/symbols when set.
 fundamentals:
   start_date: "2005-01-01"
   end_date: null
   symbol_source: "CSI_ALL"
   symbols: []
+  universe_id: "a_all"
   daily_dir: "D:/TradingPlatform/data/daily"
   symbols_cache_file: "symbols_cache.txt"
   request_delay_ms: 200
@@ -43,6 +47,7 @@ fundamentals:
   data_type: 0
 
 # Fundamentals incremental update configuration (runs automatically every day, Pt multi-symbol single-day cross-sectional API)
+# universe_id takes priority over symbol_source/symbols when set.
 fundamentals_incremental:
   daily_lookback_days: 3
   quarterly_lookback_days: 7
@@ -50,6 +55,7 @@ fundamentals_incremental:
   max_gap_days: 14
   symbol_source: "CSI_ALL"
   symbols: []
+  universe_id: "a_all"
   daily_dir: "D:/TradingPlatform/data/daily"
   symbols_cache_file: "symbols_cache.txt"
   request_delay_ms: 200
@@ -59,6 +65,7 @@ fundamentals_incremental:
   symbol_filter: []
 
 # K-line incremental update configuration (runs on a daily schedule)
+# universe_id takes priority over symbol_source/symbols/filter when set.
 kline_incremental:
   minute_lookback_days: 7
   daily_lookback_days: 10
@@ -66,6 +73,7 @@ kline_incremental:
   max_gap_days: 30
   symbol_source: "CSI_ALL"
   symbols: []
+  universe_id: "a_all"
   daily_dir: "D:/TradingPlatform/data/daily"
   minute_dir: "D:/TradingPlatform/data/minute/1min"
   symbols_cache_file: "symbols_cache_kline.txt"

@@ -47,10 +47,17 @@ class BacktestRunRequest(BaseModel):
 
     Speed defaults to 10000 (max) since most replays are batch backtests
     where the user wants results fast. Lower for visual debugging.
+
+    Symbol source: exactly one of `symbols` or `universe_id` must be set.
+    `symbols` is for ad-hoc single-symbol backtests; `universe_id` resolves
+    membership from market_ref.universe_member at the start_date.
     """
     start_date: str = Field(..., description="ISO date, e.g. '2024-01-01'")
     end_date: str = Field(..., description="ISO date, e.g. '2024-01-15'")
-    symbols: List[str] = Field(..., min_length=1)
+    symbols: Optional[List[str]] = None
+    universe_id: Optional[str] = Field(
+        None, description="Universe ID (e.g. 'csi300'). Resolved from market_ref."
+    )
     speed: float = Field(10000.0, gt=0)
     strategy_name: str = Field(..., description="Key from GET /api/strategies")
     strategy_params: dict[str, Any] = Field(default_factory=dict)
@@ -152,3 +159,22 @@ class SymbolHit(BaseModel):
 
 class SymbolsResponse(BaseModel):
     symbols: List[SymbolHit]
+
+
+# ---- Universe -------------------------------------------------------
+
+class UniverseInfo(BaseModel):
+    universe_id: str
+    name: str
+    source_index: Optional[str] = None
+    description: Optional[str] = None
+
+
+class UniversesListResponse(BaseModel):
+    universes: List[UniverseInfo]
+
+
+class UniverseMembersResponse(BaseModel):
+    universe_id: str
+    count: int
+    symbols: List[str]

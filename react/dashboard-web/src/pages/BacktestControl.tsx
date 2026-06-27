@@ -14,6 +14,10 @@ import type { BacktestStatus } from '../types';
 // because each strategy has a different param schema. Defaults are
 // seeded from the strategy's PARAMS_SCHEMA so the user can run with
 // zero clicks if they want.
+//
+// Symbol source: by default we resolve from the universe dropdown
+// (point-in-time correct against market_ref). Power users can toggle
+// to "Custom" to type explicit symbols.
 export default function BacktestControl() {
   const navigate = useNavigate();
   const { symbol } = useCurrentSymbol();
@@ -23,9 +27,17 @@ export default function BacktestControl() {
     queryFn: api.getStrategies,
   });
 
+  const universes = useQuery({
+    queryKey: ['universes'],
+    queryFn: api.getUniverses,
+  });
+
   const [strategyName, setStrategyName] = useState<string>('');
   const [params, setParams] = useState<Record<string, number | string | boolean>>({});
+  const [symbolMode, setSymbolMode] = useState<'universe' | 'custom'>('universe');
+  const [universeId, setUniverseId] = useState<string>('');
   const [symbols, setSymbols] = useState<string[]>([symbol]);
+  const [showMembers, setShowMembers] = useState(false);
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState('2024-01-15');
   const [speed, setSpeed] = useState(10000);
@@ -36,6 +48,13 @@ export default function BacktestControl() {
       setStrategyName(strategies.data.strategies[0].name);
     }
   }, [strategies.data, strategyName]);
+
+  // Default-select the first universe once loaded.
+  useEffect(() => {
+    if (!universeId && universes.data?.universes.length) {
+      setUniverseId(universes.data.universes[0].universe_id);
+    }
+  }, [universes.data, universeId]);
 
   // When strategy changes, re-seed params from defaults.
   useEffect(() => {
@@ -53,6 +72,20 @@ export default function BacktestControl() {
     () => strategies.data?.strategies.find(s => s.name === strategyName)?.params_schema ?? [],
     [strategies.data, strategyName],
   );
+
+  // Preview universe members as of start_date. Disabled when in custom mode
+  // or no universe is selected.
+  const membersPreview = useQuery({
+    queryKey: ['universe-members', universeId, startDate],
+    queryFn: () => api.getUniverseMembers(universeId, startDate),
+    enabled: symbolMode === 'universe' && Boolean(universeId) && showMembers,
+  });
+
+  const memberCount = useQuery({
+    queryKey: ['universe-member-count', universeId, startDate],
+    queryFn: () => api.getUniverseMembers(universeId, startDate),
+    enabled: symbolMode === 'universe' && Boolean(universeId),
+  });
 
   const runMutation = useMutation({
     mutationFn: api.runBacktest,
@@ -78,14 +111,27 @@ export default function BacktestControl() {
 
   const handleSubmit = () => {
     if (!strategyName) return;
-    runMutation.mutate({
-      start_date: startDate,
-      end_date: endDate,
-      symbols,
-      speed,
-      strategy_name: strategyName,
-      strategy_params: params,
-    });
+    if (symbolMode === 'universe') {
+      if (!universeId) return;
+      runMutation.mutate({
+        start_date: startDate,
+        end_date: endDate,
+        universe_id: universeId,
+        speed,
+        strategy_name: strategyName,
+        strategy_params: params,
+      });
+    } else {
+      if (symbols.length === 0) return;
+      runMutation.mutate({
+        start_date: startDate,
+        end_date: endDate,
+        symbols,
+        speed,
+        strategy_name: strategyName,
+        strategy_params: params,
+      });
+    }
   };
 
   const handleStop = async () => {
@@ -97,6 +143,9 @@ export default function BacktestControl() {
   };
 
   const isRunning = status.data?.status === 'running';
+  const canSubmit =
+    strategyName &&
+    (symbolMode === 'universe' ? Boolean(universeId) : symbols.length > 0);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -141,14 +190,74 @@ export default function BacktestControl() {
           </label>
         </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-text-muted">Symbols (one per line)</span>
-          <textarea
-            rows={3}
-            value={symbols.join('\n')}
-            onChange={e => setSymbols(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
-          />
-        </label>
+        <div className="flex gap-2 text-xs">
+          <button
+            type="button"
+            className={`px-2 py-1 rounded ${symbolMode === 'universe' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setSymbolMode('universe')}
+          >
+            By universe
+          </button>
+          <button
+            type="button"
+            className={`px-2 py-1 rounded ${symbolMode === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setSymbolMode('custom')}
+          >
+            Custom symbols
+          </button>
+        </div>
+
+        {symbolMode === 'universe' ? (
+          <div className="flex flex-col gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm text-text-muted">Universe</span>
+              <select
+                value={universeId}
+                onChange={e => setUniverseId(e.target.value)}
+                disabled={universes.isLoading}
+              >
+                {universes.isLoading ? (
+                  <option>Loading...</option>
+                ) : (
+                  universes.data?.universes.map(u => (
+                    <option key={u.universe_id} value={u.universe_id}>
+                      {u.name} ({u.universe_id})
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <div className="text-xs text-text-muted">
+              {memberCount.data
+                ? `${memberCount.data.count} symbols resolved as of ${startDate}`
+                : 'Resolving member count...'}
+              {' · '}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setShowMembers(s => !s)}
+              >
+                {showMembers ? 'Hide' : 'Show'} members
+              </button>
+            </div>
+            {showMembers && membersPreview.data && (
+              <div className="max-h-32 overflow-y-auto text-xs font-mono bg-bg-muted p-2 rounded">
+                {membersPreview.data.symbols.slice(0, 200).join(', ')}
+                {membersPreview.data.symbols.length > 200 &&
+                  ` … (+${membersPreview.data.symbols.length - 200} more)`}
+              </div>
+            )}
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1">
+            <span className="text-sm text-text-muted">Symbols (one per line)</span>
+            <textarea
+              rows={3}
+              value={symbols.join('\n')}
+              onChange={e => setSymbols(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
+            />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-sm text-text-muted">
@@ -168,7 +277,7 @@ export default function BacktestControl() {
           <button
             className="btn-primary"
             onClick={handleSubmit}
-            disabled={isRunning || runMutation.isPending || !strategyName}
+            disabled={isRunning || runMutation.isPending || !canSubmit}
           >
             {runMutation.isPending ? 'Submitting...' : 'Run backtest'}
           </button>

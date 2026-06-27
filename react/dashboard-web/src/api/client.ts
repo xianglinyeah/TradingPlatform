@@ -16,6 +16,8 @@ import type {
   RunsListResponse,
   StrategiesResponse,
   SymbolsResponse,
+  UniversesListResponse,
+  UniverseMembersResponse,
 } from '../types';
 
 const client: AxiosInstance = axios.create({
@@ -44,6 +46,16 @@ export const api = {
 
   getSymbols: (search?: string, limit = 50) =>
     client.get<SymbolsResponse>('/symbols', { params: { search, limit } }).then(r => r.data),
+
+  // --- universe management ---
+  getUniverses: () =>
+    client.get<UniversesListResponse>('/universes').then(r => r.data),
+
+  getUniverseMembers: (universe_id: string, as_of?: string) =>
+    client.get<UniverseMembersResponse>(
+      `/universes/${encodeURIComponent(universe_id)}/members`,
+      { params: as_of ? { as_of } : {} },
+    ).then(r => r.data),
 
   // --- strategy metadata ---
   getStrategies: () => client.get<StrategiesResponse>('/strategies').then(r => r.data),

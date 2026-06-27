@@ -9,14 +9,17 @@ kafka_group_id: strategy_engine_live
 
 # Multi-strategy configuration
 # Control whether a strategy is started via enabled: true/false
+#
+# Symbol sources (mutually exclusive; explicit list wins):
+#   universe_id:  resolve membership from market_ref.universe_member at startup
+#                 (requires UNIVERSE_PG_CONN env var pointing to PostgreSQL)
+#   symbols:      explicit list (legacy; still supported for backward compat)
 strategies:
-  # Strategy 1: MA main strategy - trades Ping An Bank and Kweichow Moutai
+  # Strategy 1: MA main strategy - trades a universe (resolved from market_ref)
   - name: ma_main
     class: MovingAverageStrategy
     enabled: true
-    symbols:
-      - 000001.SZ
-      - 600519.SH
+    universe_id: csi300   # ~300 symbols resolved from PostgreSQL at startup
     params:
       ema_period: 10
       buy_threshold: -0.005

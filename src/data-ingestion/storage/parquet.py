@@ -30,12 +30,21 @@ TS_TYPE = pa.timestamp("us", tz="UTC")
 
 
 def gm_to_ts_code(gm_symbol: str) -> str:
-    """`SHSE.600000` → `600000.SH`."""
+    """`SHSE.600000` -> `600000.SH`."""
     parts = gm_symbol.split(".")
     if len(parts) != 2:
         return gm_symbol
     suffix = {"SHSE": "SH", "SZSE": "SZ"}.get(parts[0].upper(), parts[0])
     return f"{parts[1]}.{suffix}"
+
+
+def ts_to_gm_code(ts_symbol: str) -> str:
+    """Inverse of gm_to_ts_code: `600000.SH` -> `SHSE.600000`."""
+    parts = ts_symbol.split(".")
+    if len(parts) != 2:
+        return ts_symbol
+    full = {"SH": "SHSE", "SZ": "SZSE"}.get(parts[1].upper(), parts[1])
+    return f"{full}.{parts[0]}"
 
 
 def _to_utc(bob):

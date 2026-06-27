@@ -212,6 +212,7 @@ packages/
 # Python local packages (offline deployment dependencies)
 **/local-packages/
 **/linux-wheels/
+**/artifacts/wheels/
 
 # Node.js (if any frontend)
 node_modules/

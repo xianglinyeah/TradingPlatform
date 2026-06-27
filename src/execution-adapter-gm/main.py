@@ -4,10 +4,12 @@ daemon thread and a gRPC server (port 5005) on the main thread.
 The gRPC servicer hands orders to the strategy thread via REQUEST_QUEUE,
 because the Python GM SDK only permits trading calls from the strategy thread.
 
-The `gm` SDK ships _pb2.py files generated with protoc 3.x, which require
-either protobuf<4 at runtime or the pure-Python parser. We set the env var
-unconditionally so the process can load both the gm SDK's protos and our
-own protoc-generated `gm_trading_pb2.py`.
+Our own `gm_trading_pb2.py` is now generated with grpcio-tools 1.48.2 and
+loads cleanly under protobuf 3.20.3 without any workaround. The
+PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python env var below is kept as a
+DEFENSE-IN-DEPTH measure: the `gm` SDK ships its own internal _pb2.py files
+whose protoc version we do not control, and the pure-Python parser tolerates
+mixed protoc generations more gracefully than the upb/C++ parser.
 """
 from __future__ import annotations
 

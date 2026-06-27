@@ -6,7 +6,7 @@ YAML keys use the same names as the C# properties, lowercased per YAML conventio
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 import yaml
 
@@ -17,6 +17,7 @@ class GmConfig:
     address: str = "127.0.0.1:7001"
     symbols: List[str] = field(default_factory=list)
     frequency: str = "60s"
+    universe_id: Optional[str] = None  # If set, overrides symbols at startup
 
 
 @dataclass

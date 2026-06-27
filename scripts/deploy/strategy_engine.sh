@@ -13,30 +13,26 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 echo "📦 Preparing offline Python dependencies..."
 cd "$PROJECT_ROOT/src/strategy-engine"
 
-# Create virtual environment
-if [ ! -d "venv" ]; then
-    echo "  🔨 Creating virtual environment..."
-    python -m venv venv
-fi
-
-# Activate virtual environment
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    source venv/Scripts/activate
-else
-    source venv/bin/activate
-fi
-
-# Upgrade pip
-pip install --upgrade pip wheel
-
-# Clean old dependencies
+# Clean old dependencies (cp311 wheels from the previous Python 3.11 build)
 rm -rf local-packages
 mkdir -p local-packages
 
-# Download all dependencies as wheel files
-echo "  📥 Downloading dependencies locally..."
+# Download all dependencies as cp312 manylinux wheels. The host (Windows)
+# would otherwise pull Windows wheels; running pip inside a
+# python:3.12-slim container guarantees the right platform tag.
+echo "  📥 Downloading dependencies (cp312 manylinux)..."
 if [ -f "requirements.txt" ]; then
-    pip download -r requirements.txt -d local-packages
+    # PIP_INDEX_URL is set because VPN on the host does not always route
+    # through docker NAT; the Tsinghua mirror is reachable directly.
+    docker run --rm \
+        -e PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+        -v "$PWD:/work" -w /work python:3.12-slim \
+        bash -c "pip install --upgrade pip wheel && \
+                 pip download -r requirements.txt -d local-packages \
+                     --platform manylinux2014_x86_64 \
+                     --python-version 312 \
+                     --implementation cp \
+                     --only-binary=:all:"
     echo "  ✅ Dependencies downloaded: $(ls -1 local-packages/*.whl 2>/dev/null | wc -l) packages"
 else
     echo "  ❌ requirements.txt not found"

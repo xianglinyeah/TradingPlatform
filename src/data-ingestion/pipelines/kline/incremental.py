@@ -49,8 +49,21 @@ class KlineSummary:
     errors: list = field(default_factory=list)
 
 
-def load_symbols(kcfg: KlineIncrementalConfig) -> List[str]:
-    """CUSTOM vs CSI_ALL with optional in-process filter (mirrors C# LoadKlineSymbols)."""
+def load_symbols(kcfg: KlineIncrementalConfig,
+                 storage_conn_str: str = "") -> List[str]:
+    """Resolve symbols for kline_incremental.
+
+    Priority: universe_id (from PG market_ref) > CUSTOM > CSI_ALL.
+    Returns GM-format symbols suitable for the GM SDK.
+    """
+    # Universe-first: pull from market_ref.universe_member if configured.
+    if kcfg.universe_id and storage_conn_str:
+        from storage.universe import get_members_as_gm
+        syms = get_members_as_gm(storage_conn_str, kcfg.universe_id)
+        logger.info("Symbol source universe_id=%s: %d symbols",
+                    kcfg.universe_id, len(syms))
+        return syms
+
     if kcfg.symbol_source.upper() == "CUSTOM":
         syms = list(kcfg.symbol_filter) if kcfg.symbol_filter else list(kcfg.symbols)
         logger.info("Symbol source CUSTOM: %d symbols", len(syms))

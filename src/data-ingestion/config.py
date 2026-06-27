@@ -27,6 +27,7 @@ class StorageConfig:
 class MarketScopeConfig:
     scope_type: str = "SSE50"
     custom_symbols: List[str] = field(default_factory=list)
+    universe_id: Optional[str] = None  # If set, overrides scope_type/custom_symbols
 
 
 @dataclass
@@ -58,6 +59,7 @@ class FundamentalsConfig:
     end_date: Optional[str] = None
     symbol_source: str = "CSI_ALL"
     symbols: List[str] = field(default_factory=list)
+    universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols
     daily_dir: str = r"D:\TradingPlatform\data\daily"
     symbols_cache_file: str = "symbols_cache.txt"
     request_delay_ms: int = 200
@@ -81,6 +83,7 @@ class FundamentalsIncrementalConfig:
     symbol_source: str = "CSI_ALL"
     symbols: List[str] = field(default_factory=list)
     symbol_filter: List[str] = field(default_factory=list)
+    universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols/filter
     daily_dir: str = r"D:\TradingPlatform\data\daily"
     symbols_cache_file: str = "symbols_cache.txt"
     request_delay_ms: int = 200
@@ -98,6 +101,7 @@ class KlineIncrementalConfig:
     symbol_source: str = "CSI_ALL"
     symbols: List[str] = field(default_factory=list)
     symbol_filter: List[str] = field(default_factory=list)
+    universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols/filter
     daily_dir: str = r"D:\TradingPlatform\data\daily"
     minute_dir: str = r"D:\TradingPlatform\data\minute\1min"
     symbols_cache_file: str = "symbols_cache_kline.txt"

@@ -1,8 +1,8 @@
-# data-ingestion CronJob — daily incremental fetch of fundamentals + kline
+# data-ingestion CronJob — daily incremental fetch of universe + fundamentals + kline
 #
 # Runs at 01:00 Beijing time (17:00 UTC) every day.
-# Execution order: fundamentals first (~13 min), then kline (~5-15 hours).
-# If fundamentals fails, kline is skipped and the pod restarts (retry).
+# Execution order: universe_sync first (~1 min), then fundamentals (~13 min), then kline (~5-15 hours).
+# If any step fails, subsequent steps are skipped (shell short-circuit) and the pod restarts (retry).
 #
 # Prerequisites:
 #   kubectl create secret generic gm-secrets -n trading-platform \
@@ -26,6 +26,7 @@ data:
     market_scope:
       scope_type: "A_ALL"
       custom_symbols: []
+      universe_id: "a_all"
     data:
       frequency: "60s"
       start_year: 2026
@@ -41,6 +42,7 @@ data:
       max_gap_days: 14
       symbol_source: "CSI_ALL"
       symbols: []
+      universe_id: "a_all"
       daily_dir: "/data/daily"
       symbols_cache_file: "symbols_cache.txt"
       request_delay_ms: 0
@@ -55,6 +57,7 @@ data:
       max_gap_days: 30
       symbol_source: "CSI_ALL"
       symbols: []
+      universe_id: "a_all"
       daily_dir: "/data/daily"
       minute_dir: "/data/minute/1min"
       symbols_cache_file: "symbols_cache_kline.txt"
@@ -90,7 +93,9 @@ spec:
             command: ["/bin/bash", "-c"]
             args:
               - |
-                echo "[CRONJOB] Starting fundamentals_incremental at $(date)"
+                echo "[CRONJOB] Starting universe_sync at $(date)"
+                python -u main.py /config/config.yaml --mode=universe_sync && \
+                echo "[CRONJOB] Starting fundamentals_incremental at $(date)" && \
                 python -u main.py /config/config.yaml --mode=fundamentals_incremental && \
                 echo "[CRONJOB] Starting kline_incremental at $(date)" && \
                 python -u main.py /config/config.yaml --mode=kline_incremental && \

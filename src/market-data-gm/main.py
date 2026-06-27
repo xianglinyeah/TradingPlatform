@@ -45,6 +45,59 @@ def _setup_logging(log_dir: str, level: str) -> None:
     root.addHandler(console)
 
 
+def _resolve_symbols(cfg, log) -> list[str]:
+    """Resolve subscription symbols. universe_id wins over explicit symbols list.
+
+    Reads from market_ref.universe_member via UNIVERSE_PG_CONN env var
+    (Npgsql-style connection string). Returns GM-format symbols.
+    """
+    if not cfg.gm.universe_id:
+        return list(cfg.gm.symbols)
+
+    conn_str = os.getenv("UNIVERSE_PG_CONN")
+    if not conn_str:
+        log.error(
+            "gm.universe_id=%s set but UNIVERSE_PG_CONN env var is not configured; "
+            "falling back to explicit symbols list",
+            cfg.gm.universe_id,
+        )
+        return list(cfg.gm.symbols)
+
+    import psycopg2
+    # Parse Npgsql-style 'Host=...;Port=...;Username=...;Password=...;Database=...'
+    parts: dict[str, str] = {}
+    for token in conn_str.split(";"):
+        token = token.strip()
+        if "=" in token:
+            k, v = token.split("=", 1)
+            parts[k.strip().lower()] = v.strip()
+    pg_kwargs = {
+        "host": parts.get("host", "localhost"),
+        "port": int(parts.get("port", "5432")),
+        "user": parts.get("username") or parts.get("user", ""),
+        "password": parts.get("password", ""),
+        "dbname": parts.get("database") or parts.get("dbname", ""),
+    }
+    with psycopg2.connect(**pg_kwargs) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT symbol FROM market_ref.universe_member "
+                "WHERE universe_id = %s AND effective_to IS NULL "
+                "ORDER BY symbol",
+                (cfg.gm.universe_id,),
+            )
+            ts_symbols = [r[0] for r in cur.fetchall()]
+
+    # Convert TS format (600000.SH) -> GM format (SHSE.600000) for the SDK.
+    from symbol_converter import to_gm
+    gm_symbols = [to_gm(s) for s in ts_symbols]
+    log.info(
+        "Resolved universe_id=%s -> %d GM-format symbols",
+        cfg.gm.universe_id, len(gm_symbols),
+    )
+    return gm_symbols
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     config_path = argv[0] if argv else "config.yaml"
@@ -58,8 +111,16 @@ def main(argv=None) -> int:
         log.error("GM_TOKEN not configured! Set gm.token in %s", config_path)
         return 1
 
+    # Resolve subscription symbols (universe_id from PG if configured).
+    symbols = _resolve_symbols(cfg, log)
+    if not symbols:
+        log.error("No symbols to subscribe (neither gm.symbols nor universe_id resolved any)")
+        return 1
+    cfg.gm.symbols = symbols  # propagate resolved list for downstream logging
+
     log.info("=== market-data-gm (Python) — config=%s ===", config_path)
-    log.info("Subscribed symbols: %s", ", ".join(cfg.gm.symbols))
+    log.info("Subscribed symbols: %d total (%s...)",
+             len(symbols), symbols[0] if symbols else "")
     log.info("Subscription frequency: %s", cfg.gm.frequency)
     log.info(
         "GM_TOKEN configured: %s***",

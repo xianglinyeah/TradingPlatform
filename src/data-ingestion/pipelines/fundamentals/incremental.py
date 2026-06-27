@@ -66,7 +66,12 @@ def run_fundamentals_incremental_pt(cfg, fcfg: FundamentalsIncrementalConfig) ->
     _preflight(storage)
 
     # Build symbol pool (force-refresh cache for IPOs).
-    if fcfg.symbol_source.upper() == "CUSTOM":
+    if fcfg.universe_id:
+        from storage.universe import get_members_as_gm
+        symbols = get_members_as_gm(cfg.storage.connection_string, fcfg.universe_id)
+        log.info("Symbol source universe_id=%s: %d symbols",
+                 fcfg.universe_id, len(symbols))
+    elif fcfg.symbol_source.upper() == "CUSTOM":
         symbols = list(fcfg.symbol_filter) if fcfg.symbol_filter else list(fcfg.symbols)
         log.info("Symbol source CUSTOM: %d symbols", len(symbols))
     else:

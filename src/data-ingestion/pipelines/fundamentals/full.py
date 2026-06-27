@@ -50,7 +50,12 @@ def run_fundamentals_full(cfg, fcfg: FundamentalsConfig) -> None:
     _ensure_progress(pg_conn)
 
     # Build symbol pool
-    if fcfg.symbol_source.upper() == "CUSTOM":
+    if fcfg.universe_id:
+        from storage.universe import get_members_as_gm
+        symbols = get_members_as_gm(cfg.storage.connection_string, fcfg.universe_id)
+        logger.info("Symbol source universe_id=%s: %d symbols",
+                    fcfg.universe_id, len(symbols))
+    elif fcfg.symbol_source.upper() == "CUSTOM":
         symbols = list(fcfg.symbols)
     else:
         symbols = symbol_pool.refresh(fcfg.daily_dir, fcfg.symbols_cache_file)

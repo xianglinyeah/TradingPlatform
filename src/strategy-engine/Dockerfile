@@ -1,4 +1,6 @@
-FROM python:3.11
+# Python 3.12-slim matches the other 4 Python services; shares the cached
+# base image and lets wheel caches be reused across services.
+FROM python:3.12-slim
 
 WORKDIR /app
 

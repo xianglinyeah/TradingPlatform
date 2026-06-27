@@ -1,17 +1,30 @@
 pandas>=2.0.0
 pyarrow>=14.0.0
-kafka-python>=2.0.2
-grpcio>=1.60.0
-grpcio-tools>=1.60.0
+# confluent-kafka (librdkafka-backed) is the same client used by market-data-gm;
+# kafka-python was dropped to unify the Kafka client across services.
+confluent-kafka>=2.3.0
+# protobuf pinned <4.0 because the gRPC stubs in protos/ are generated with
+# grpcio-tools 1.48.x (3.20.x runtime). The execution-adapter-gm path also
+# transitively requires protobuf<4.0 via the gm SDK.
+grpcio>=1.48.2,<2.0
+protobuf>=3.20.3,<4.0
+# grpcio-tools is NOT here: it is build-time only (regenerates the stubs in
+# protos/ from .proto files). The committed _pb2.py / _pb2_grpc.py only
+# import grpc + google.protobuf at runtime. See README for regen commands.
 python-dotenv>=1.0.0
 pyyaml>=6.0.1
 numpy>=1.24.0
-python-snappy>=0.6.0
 
 # Run-control HTTP API (hot-load + strategy metadata for Dashboard.Service)
 fastapi>=0.110.0
 uvicorn>=0.27.0
 pydantic>=2.5.0
+
+# Observability: metrics.py exposes Counters/Histograms on :8000/metrics
+prometheus_client>=0.20.0
+
+# PostgreSQL access for universe membership resolution at startup
+psycopg2-binary>=2.9.0
 
 # Testing dependencies
 pytest>=7.4.0

@@ -72,6 +72,12 @@ spec:
         - name: SESSION_ID
           value: "live-session-k8s"
 
+        # Universe management: connection to PostgreSQL market_ref schema.
+        # When strategies declare universe_id instead of explicit symbols,
+        # the engine resolves membership from this DB at startup.
+        - name: UNIVERSE_PG_CONN
+          value: "Host=postgres.infrastructure;Port=5432;Username=dev_user;Password=dev_pass;Database=dev"
+
         # Strategy config file - read from env-selector (live.yaml / e2e.yaml).
         - name: STRATEGY_CONFIG
           valueFrom:
