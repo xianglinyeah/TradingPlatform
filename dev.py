@@ -667,20 +667,27 @@ class DevCommand:
                 if not self._build_service(svc):
                     return False
 
-            print("\n=== [3/5] Deploying & waiting for rollout ===")
-            if not self._restart_deployments(*targets):
-                return False
-
             # Clear Kafka topic so strategy-engine starts from a clean slate.
             # Old messages (live GM bars + previous replay sessions) would
             # confuse the strategy (mixed-timeframe EMA input).
-            print("\n=== [3.5/5] Clearing Kafka topic (market.data) ===")
+            #
+            # NOTE: clear BEFORE restart. If we restart first, the new pod
+            # subscribes to the topic, then sees "partition count changed
+            # from 1 to 0" when the topic is deleted, and confluent-kafka's
+            # metadata refresh is not always enough to recover — the consumer
+            # sits idle while the smoke-test replay produces messages that
+            # never get consumed. Clearing first means the new pod starts
+            # against the recreated topic and consumes from earliest.
+            print("\n=== [3/5] Clearing Kafka topic (market.data) ===")
             self._clear_kafka_topic("market.data")
+            # Brief pause to let the topic recreation propagate through the
+            # Kafka cluster before strategy-engine subscribes.
+            print("  waiting 5s for topic recreation to settle...")
+            time.sleep(5)
 
-            # strategy-engine needs to re-join the consumer group after topic
-            # reset. Give it time to stabilise before replay starts.
-            print("  waiting 20s for consumer to rejoin...")
-            time.sleep(20)
+            print("\n=== [3.5/5] Deploying & waiting for rollout ===")
+            if not self._restart_deployments(*targets):
+                return False
 
             # Note: smoke_test.py connects via LoadBalancer (8080, 5432) directly.
             print("\n=== [4/5] Skipping port-forward (NodePort/LB used directly) ===")
