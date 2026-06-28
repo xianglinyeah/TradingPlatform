@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.config import settings
-from src.engines.backtest_engine import BacktestEngine
 from src.engines.live_engine import LiveEngine
 
 
@@ -60,8 +59,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Strategy Service")
     parser.add_argument(
         'mode',
-        choices=['research', 'live', 'hot'],
-        help='Running mode: research (local), live (Kafka+gRPC), '
+        choices=['live', 'hot'],
+        help='Running mode: live (Kafka+gRPC) '
              'or hot (live + run-control HTTP API for Dashboard.Service)',
     )
     parser.add_argument(
@@ -114,13 +113,9 @@ def main() -> None:
 
     logger.info(f"Loading config from: {config_file}")
 
-    # Run appropriate engine
-    if run_mode == 'research':
-        engine = BacktestEngine(str(config_file))
-        results = engine.run()
-        logger.info(f"\nResearch completed. Return: {results['return_pct']:.2f}%")
-
-    elif run_mode == 'live':
+    # Run appropriate engine (live is the only supported mode; `hot` is
+    # promoted to `live` above before we reach here).
+    if run_mode == 'live':
         engine = LiveEngine(str(config_file))
         engine.run()
 

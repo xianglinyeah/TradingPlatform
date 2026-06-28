@@ -5,7 +5,11 @@ mode: live
 # Kafka configuration (k8s service DNS)
 kafka_brokers: kafka.infrastructure:9092
 kafka_topic: market.data
-kafka_group_id: strategy_engine_live
+# Single consumer group for strategy-engine across live/e2e/hot modes.
+# The smoke-test wrapper clears the topic before restart, and the consumer
+# uses auto.offset.reset=earliest, so splitting groups per environment only
+# leaves stale members that wedge the rebalance protocol.
+kafka_group_id: strategy_engine
 
 # Multi-strategy configuration
 # Control whether a strategy is started via enabled: true/false
@@ -75,3 +79,15 @@ session_id: live-session-k8s
 # Account configuration
 initial_capital: 1000000
 commission_rate: 0.0003
+
+# Daily-bar warmup source. The live engine reads recent kline_daily bars
+# from ClickHouse at startup to populate HistoryStore (used by daily-aware
+# strategies via Context). Parquet is no longer a read source; writes
+# continue in data-ingestion as a backup.
+clickhouse:
+  host: clickhouse.infrastructure
+  port: 8123
+  database: market_data
+  username: dev_user
+  password: dev_pass
+  daily_window: 120

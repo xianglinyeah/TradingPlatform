@@ -60,7 +60,7 @@ def check_services():
             services["strategy_engine"] = True
             print("  [OK] strategy_engine running (Docker container)")
         else:
-            print("  [INFO] strategy_engine not running (will use research mode)")
+            print("  [INFO] strategy_engine not running (live/hot mode required for paper-trading tests)")
     except Exception as e:
         print(f"  [INFO] strategy_engine check failed: {e}")
 

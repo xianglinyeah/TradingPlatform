@@ -26,6 +26,10 @@ prometheus_client>=0.20.0
 # PostgreSQL access for universe membership resolution at startup
 psycopg2-binary>=2.9.0
 
+# ClickHouse access for HistoryStore daily-bar warmup (market_data.kline_daily).
+# HTTP client, same library used by dashboard-service and data-ingestion.
+clickhouse-connect>=0.7.0
+
 # Testing dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0

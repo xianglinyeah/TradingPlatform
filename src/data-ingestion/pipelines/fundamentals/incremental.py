@@ -76,6 +76,8 @@ def run_fundamentals_incremental_pt(cfg, fcfg: FundamentalsIncrementalConfig) ->
         log.info("Symbol source CUSTOM: %d symbols", len(symbols))
     else:
         from core import symbol_pool
+        # fundamentals configs don't carry a clickhouse section; rely on
+        # env defaults / Parquet fallback inside symbol_pool.
         symbols = symbol_pool.refresh(fcfg.daily_dir, fcfg.symbols_cache_file)
 
     today = date.today()

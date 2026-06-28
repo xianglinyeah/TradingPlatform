@@ -16,7 +16,7 @@ from ..data import BarData
 from ..config import load_config
 from .base_engine import BaseEngine
 
-# RunRegistry is optional in research/local mode; required for hot-load.
+# RunRegistry is optional for the default config-loaded path; required for hot-load.
 try:
     from ..run import RunStatus, UnknownRunError, get_global_registry
     RUN_REGISTRY_AVAILABLE = True
@@ -71,28 +71,47 @@ class LiveEngine(BaseEngine):
         self.history_store: Optional[HistoryStore] = None
 
         if CONTEXT_AVAILABLE:
-            parquet_dir = self.config.get('parquet_data_dir')
-            if parquet_dir:
-                logger.info(f"Initializing HistoryStore with parquet_dir: {parquet_dir}")
+            ch_section = self.config.get('clickhouse')
+            if ch_section:
+                logger.info("Initializing HistoryStore from ClickHouse: %s",
+                            ch_section.get('host', 'clickhouse.infrastructure'))
                 try:
-                    # Initialize HistoryStore with default windows
-                    daily_window = self.config.get('daily_window', 120)
+                    from ..context.history_store import ClickHouseConfig
+                    ch_cfg = ClickHouseConfig(
+                        host=ch_section.get('host', 'clickhouse.infrastructure'),
+                        port=int(ch_section.get('port', 8123)),
+                        database=ch_section.get('database', 'market_data'),
+                        username=ch_section.get('username', 'dev_user'),
+                        password=ch_section.get('password', 'dev_pass'),
+                    )
+
+                    daily_window = int(ch_section.get('daily_window', self.config.get('daily_window', 120)))
                     minute_window = self.config.get('minute_window', 240)
                     self.history_store = HistoryStore(
                         daily_window=daily_window,
-                        minute_window=minute_window
+                        minute_window=minute_window,
                     )
 
-                    # Warmup HistoryStore (BLOCKING - waits for completion)
-                    logger.info("Starting HistoryStore warmup (this may take several seconds)...")
+                    # Restrict warmup to symbols the strategies actually care
+                    # about. Strategies hold TS-format codes in config
+                    # (600000.SH); HistoryStore uses GM format internally, so
+                    # convert here.
+                    warm_syms: list[str] = []
+                    for s in self.strategies:
+                        for sym in getattr(s, 'symbols', []) or []:
+                            if sym not in warm_syms:
+                                warm_syms.append(sym)
+
                     max_workers = self.config.get('warmup_max_workers', 8)
-                    self.history_store.warmup(parquet_dir, max_workers=max_workers)
+                    self.history_store.warmup(
+                        clickhouse=ch_cfg,
+                        symbols=warm_syms or None,
+                        max_workers=max_workers,
+                    )
                     logger.info("HistoryStore warmup completed successfully")
 
-                    # Create Context
                     self.context = Context(self.history_store)
 
-                    # Set context for all strategies that support it
                     context_set_count = 0
                     for strategy in self.strategies:
                         if hasattr(strategy, 'set_context'):
@@ -107,7 +126,7 @@ class LiveEngine(BaseEngine):
                     self.history_store = None
                     self.context = None
             else:
-                logger.info("No parquet_data_dir configured, strategies will run without daily data")
+                logger.info("No 'clickhouse' config section; strategies will run without daily data")
         else:
             logger.info("Context module not available, strategies will run without daily data")
 

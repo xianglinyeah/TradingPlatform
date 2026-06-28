@@ -58,7 +58,11 @@ def _build_symbols(market_scope: MarketScopeConfig,
         logger.info("Symbol source CUSTOM: %d symbols", len(syms))
         return syms
     if scope in ("A_ALL", "CSI_ALL"):
-        return symbol_pool.refresh(kcfg.daily_dir, kcfg.symbols_cache_file)
+        from dataclasses import asdict
+        return symbol_pool.refresh(
+            kcfg.daily_dir, kcfg.symbols_cache_file,
+            clickhouse=asdict(kcfg.clickhouse),
+        )
     raise ValueError(f"Unsupported market_scope.scope_type for kline_full: {scope}")
 
 

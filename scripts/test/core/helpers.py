@@ -30,120 +30,24 @@ class BacktestTestHelper:
 
     def run_local_backtest(self, start_date: str, end_date: str) -> Dict:
         """
-        Run local backtest and parse results
-        Uses src/strategy-engine/config/research.yaml configuration
+        Deprecated: the event-driven BacktestEngine was removed when daily-
+        frequency alpha research moved to vectorized pandas under
+        ``scripts/research/``. The old ``research`` CLI mode and
+        ``research.yaml`` no longer exist.
 
-        Args:
-            start_date: Start date (format: YYYYMMDD)
-            end_date: End date (format: YYYYMMDD)
+        This stub raises immediately so callers fail loudly instead of
+        hunting for a missing config file. For local alpha validation use::
 
-        Returns:
-            Dictionary containing trade count, PnL and other information
+            python -m scripts.research.volume_breakout_alpha
+
+        from the project root.
         """
-        print(f"[LOCAL] Running local backtest: {start_date} ~ {end_date}")
-
-        # Use existing research.yaml configuration, but modify the date range
-        import yaml
-        import os
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
-        research_config_path = os.path.join(project_root, "src", "strategy-engine", "config", "research.yaml")
-
-        # Read existing configuration
-        with open(research_config_path, 'r', encoding='utf-8') as f:
-            config_data = yaml.safe_load(f)
-
-        # Update date range
-        config_data['start_date'] = start_date
-        config_data['end_date'] = end_date
-
-        # Create temporary configuration file
-        config_content = yaml.dump(config_data, allow_unicode=True)
-        import tempfile
-        import os
-
-        # Create temporary file in current directory
-        config_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-        config_file.write(config_content)
-        config_file.close()
-
-        try:
-            # Run local backtest - use correct relative path
-            # helpers.py is in scripts/test/core/ directory, need to go up 3 levels to project root
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
-            strategy_dir = os.path.join(project_root, "src", "strategy-engine")
-            main_py = os.path.join(strategy_dir, "main.py")
-
-            # Prefer virtual environment, fall back to system Python if not present
-            venv_python = os.path.join(strategy_dir, "venv", "Scripts", "python.exe")
-            if os.path.exists(venv_python):
-                python_exe = venv_python
-            else:
-                python_exe = sys.executable  # Use current Python interpreter
-
-            cmd = [
-                python_exe,
-                main_py,
-                "research",
-                "--config", os.path.abspath(config_file.name)
-            ]
-
-            # Create temp files for output
-            import tempfile
-            stdout_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
-            stderr_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
-            stdout_path = stdout_file.name
-            stderr_path = stderr_file.name
-            stdout_file.close()
-            stderr_file.close()
-
-            result = subprocess.run(
-                cmd,
-                stdout=open(stdout_path, 'wb'),
-                stderr=open(stderr_path, 'wb'),
-                timeout=120,
-                cwd=strategy_dir
-            )
-
-            # Read the output from files
-            with open(stdout_path, 'rb') as f:
-                stdout_bytes = f.read()
-            with open(stderr_path, 'rb') as f:
-                stderr_bytes = f.read()
-
-            # Clean up temp files
-            try:
-                os.unlink(stdout_path)
-                os.unlink(stderr_path)
-            except:
-                pass
-
-            # Decode with UTF-8
-            stdout_str = stdout_bytes.decode('utf-8', errors='replace')
-            stderr_str = stderr_bytes.decode('utf-8', errors='replace')
-
-            if result.returncode != 0:
-                raise RuntimeError(f"Local backtest failed: {stderr_str}")
-
-            # Store output for later use - create a simple namespace
-            class Output:
-                pass
-            output_obj = Output()
-            output_obj.stdout = stdout_str
-            output_obj.stderr = stderr_str
-            result = output_obj  # Replace result with our custom object
-
-        finally:
-            # Clean up temporary files
-            try:
-                os.unlink(config_file.name)
-            except:
-                pass
-
-        # Combine stdout and stderr - already decoded as strings above
-        output = result.stdout + result.stderr
-        return self._parse_backtest_output(output)
+        raise NotImplementedError(
+            "run_local_backtest is deprecated: BacktestEngine and the "
+            "'research' CLI mode have been removed. For daily-frequency "
+            "alpha research, use scripts/research/ (e.g. "
+            "`python -m scripts.research.volume_breakout_alpha`)."
+        )
 
     def _parse_backtest_output(self, output: str) -> Dict:
         """Parse local backtest output"""

@@ -24,7 +24,7 @@ from typing import Callable, Dict, Optional
 
 import pandas as pd
 
-from context import Context  # Context class from context module
+from ..context import Context  # Context class from src/context/
 
 logger = logging.getLogger(__name__)
 
@@ -201,15 +201,15 @@ class DailyBreakoutStrategy:
 
 if __name__ == "__main__":
     import sys
-    from context.history_store import HistoryStore
-    from context.context import Context
+    from ..context.history_store import HistoryStore, ClickHouseConfig
+    from ..context.context import Context
 
     logging.basicConfig(level=logging.INFO)
 
-    parquet_dir = sys.argv[1] if len(sys.argv) > 1 else "./parquet/daily"
-
+    # Daily-bar warmup now comes from ClickHouse; pass an explicit
+    # ClickHouseConfig or None to skip warmup.
     store = HistoryStore(daily_window=120)
-    store.warmup(parquet_dir)
+    store.warmup(clickhouse=None)
 
     ctx = Context(store)
     strategy = DailyBreakoutStrategy()

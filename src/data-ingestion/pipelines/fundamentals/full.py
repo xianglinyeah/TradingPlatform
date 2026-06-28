@@ -58,6 +58,8 @@ def run_fundamentals_full(cfg, fcfg: FundamentalsConfig) -> None:
     elif fcfg.symbol_source.upper() == "CUSTOM":
         symbols = list(fcfg.symbols)
     else:
+        # fundamentals configs don't carry a clickhouse section; rely on
+        # env defaults / Parquet fallback inside symbol_pool.
         symbols = symbol_pool.refresh(fcfg.daily_dir, fcfg.symbols_cache_file)
 
     start_date = fcfg.start_date or "2005-01-01"

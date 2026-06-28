@@ -8,7 +8,10 @@
 
 mode: live
 
-# Data configuration (only for research mode)
+# Legacy daily-data fields retained for backward compatibility with older
+# tooling that reads this config; the live engine no longer consumes them
+# (daily context is now warmed up from ClickHouse — see clickhouse: below).
+parquet_path: D:/TradingPlatform/data/minute/1min
 parquet_path: D:/TradingPlatform/data/minute/1min
 symbols:
   - 600000.SH
@@ -18,7 +21,9 @@ end_date: "20230115"
 # Kafka configuration (for live mode)
 kafka_brokers: kafka.infrastructure:9092
 kafka_topic: market.data
-kafka_group_id: strategy_engine_e2e
+# Same consumer group as live (see live.yaml rationale). The smoke-test
+# wrapper clears the topic before each run, so there is no offset legacy.
+kafka_group_id: strategy_engine
 
 # E2E strategies — only EMA. Do NOT add other strategies here; keep this file
 # minimal so smoke-test assertions remain stable as live.yaml grows.
@@ -44,3 +49,12 @@ session_id: live-session-e2e
 # Account configuration
 initial_capital: 1000000
 commission_rate: 0.0003
+
+# Daily-bar warmup source (matches live.yaml; smoke test exercises this).
+clickhouse:
+  host: clickhouse.infrastructure
+  port: 8123
+  database: market_data
+  username: dev_user
+  password: dev_pass
+  daily_window: 120

@@ -45,10 +45,32 @@ builder.Services.AddSwaggerGen(c =>
 var dataPath = builder.Configuration.GetValue<string>("DataPath")
     ?? @"D:\BackTesting\data\minute\1min";
 
+// Loader selection: ClickHouse is the default; Parquet stays available as a
+// config-driven fallback so we can roll back without redeploying reads.
+// Parquet writes continue in data-ingestion either way (double-write backup).
+var dataSource = (builder.Configuration.GetValue<string>("DataSource") ?? "ClickHouse")
+    .Trim().Equals("Parquet", StringComparison.OrdinalIgnoreCase)
+        ? "Parquet" : "ClickHouse";
+
 builder.Services.AddSingleton<IReplayDataLoader>(sp =>
 {
-    var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ParquetDataLoader>>();
-    return new ParquetDataLoader(dataPath, logger);
+    var factory = sp.GetRequiredService<ILoggerFactory>();
+    if (dataSource == "Parquet")
+    {
+        Log.Information("IReplayDataLoader: using Parquet (DataSource=Parquet)");
+        return new ParquetDataLoader(dataPath, factory.CreateLogger<ParquetDataLoader>());
+    }
+
+    var ch = builder.Configuration.GetSection("ClickHouse");
+    var host = ch["Host"] ?? "clickhouse.infrastructure";
+    var port = ch.GetValue<int?>("Port") ?? 8123;
+    var db = ch["Database"] ?? "market_data";
+    var user = ch["Username"] ?? "dev_user";
+    var pwd = ch["Password"] ?? "dev_pass";
+    // ClickHouse.Client accepts a Npgsql-style connection string.
+    var connStr = $"Host={host};Port={port};Database={db};Username={user};Password={pwd}";
+    Log.Information("IReplayDataLoader: using ClickHouse (DataSource=ClickHouse, {Host}:{Port}/{Database})", host, port, db);
+    return new ClickHouseDataLoader(connStr, db, factory.CreateLogger<ClickHouseDataLoader>());
 });
 
 // Get connection string from configuration

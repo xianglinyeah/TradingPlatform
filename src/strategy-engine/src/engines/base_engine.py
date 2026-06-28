@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class BaseEngine:
     """
-    Base Engine Class - Common functionality for Backtest and Live engines
+    Base Engine Class - Common functionality for Live engines
     """
 
     def __init__(self, config_path: str):
@@ -25,7 +25,7 @@ class BaseEngine:
         """Resolve a universe_id from market_ref.universe_member via PostgreSQL.
 
         Uses the UNIVERSE_PG_CONN env var (Npgsql-style connection string).
-        Returns an empty list if the env var is unset (e.g. research mode),
+        Returns an empty list if the env var is unset (e.g. local dev),
         in which case the strategy falls back to its explicit symbols list.
         """
         conn_str = os.getenv("UNIVERSE_PG_CONN")

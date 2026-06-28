@@ -70,7 +70,11 @@ def load_symbols(kcfg: KlineIncrementalConfig,
         return syms
 
     from core import symbol_pool
-    syms = symbol_pool.refresh(kcfg.daily_dir, kcfg.symbols_cache_file)
+    from dataclasses import asdict
+    syms = symbol_pool.refresh(
+        kcfg.daily_dir, kcfg.symbols_cache_file,
+        clickhouse=asdict(kcfg.clickhouse),
+    )
     if kcfg.symbol_filter and kcfg.symbol_source.upper() == "CSI_ALL":
         allowed = set(kcfg.symbol_filter)
         syms = [s for s in syms if s in allowed]

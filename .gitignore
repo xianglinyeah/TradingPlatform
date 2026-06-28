@@ -213,6 +213,8 @@ packages/
 **/local-packages/
 **/linux-wheels/
 **/artifacts/wheels/
+# dotnet publish output (required by Dockerfile but regenerable on build)
+**/artifacts/market-data-replay/
 
 # Node.js (if any frontend)
 node_modules/
