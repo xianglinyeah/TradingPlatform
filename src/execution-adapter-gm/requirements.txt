@@ -6,3 +6,7 @@ grpcio>=1.49.0
 protobuf>=3.20.3,<4.0
 pyyaml>=6.0
 # grpcio-tools is NOT here: build-time only (regenerates stubs from .proto).
+
+# Testing dependencies (used by run_unit_tests.py via the service venv)
+pytest>=7.4.0
+pytest-cov>=4.1.0
