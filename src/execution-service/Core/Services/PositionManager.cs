@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using ExecutionService.Models;
 using ExecutionService.Core.Services;
 using ExecutionService.Core.Events;
@@ -24,20 +25,39 @@ public class PositionManager : IPositionManager
     // Per-(session, symbol) lock to serialise position updates. gRPC requests run
     // concurrently on separate threads; without this, two orders on the same symbol
     // would race on GetPosition → UpdatePosition and one overwrite the other.
-    private static readonly Dictionary<(string SessionId, string Symbol), SemaphoreSlim> _locks = new();
-    private static readonly object _locksGuard = new();
+    //
+    // Bounded growth: when the waiters drop to zero we attempt to remove the
+    // entry under a lock (only the last releaser may remove). This prevents
+    // the dictionary from growing unboundedly across long runs that span
+    // many sessions/symbols (the previous implementation leaked one
+    // SemaphoreSlim per (session, symbol) tuple forever).
+    private static readonly ConcurrentDictionary<(string SessionId, string Symbol), SemaphoreSlim> _locks = new();
+    private static int _activeWaiters;
 
     private static SemaphoreSlim GetLock(string sessionId, string symbol)
+        => _locks.GetOrAdd((sessionId, symbol), _ => new SemaphoreSlim(1, 1));
+
+    private static void ReleaseAndMaybeCleanup(string sessionId, string symbol, SemaphoreSlim sem)
     {
-        lock (_locksGuard)
+        sem.Release();
+        // Best-effort cleanup: only the last releaser (CurrentCount returns to 1)
+        // attempts TryRemove. Race-safe because ConcurrentDictionary.TryRemove
+        // is atomic; if a new GetLock happens concurrently we may remove an entry
+        // that's about to be re-added — that's fine, GetOrAdd creates a fresh one.
+        if (sem.CurrentCount == 1)
         {
-            var key = (sessionId, symbol);
-            if (!_locks.TryGetValue(key, out var sem))
+            Interlocked.Increment(ref _activeWaiters);
+            try
             {
-                sem = new SemaphoreSlim(1, 1);
-                _locks[key] = sem;
+                if (_locks.Count > 1024)  // hysteresis: don't churn on small dicts
+                {
+                    _locks.TryRemove((sessionId, symbol), out _);
+                }
             }
-            return sem;
+            finally
+            {
+                Interlocked.Decrement(ref _activeWaiters);
+            }
         }
     }
 
@@ -110,7 +130,7 @@ public class PositionManager : IPositionManager
         }
         finally
         {
-            sem.Release();
+            ReleaseAndMaybeCleanup(sessionId, order.Symbol, sem);
         }
     }
 

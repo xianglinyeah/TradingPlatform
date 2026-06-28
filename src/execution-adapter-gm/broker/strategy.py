@@ -30,10 +30,20 @@ _RUN_CFG: dict = {
     "session_end": "15:30",
     "account": "",  # default account (paper or live)
     "strategy_id": "gm-trading-adaptor",
+    # Per-order broker acknowledgement timeout (seconds). Override via
+    # prepare(..., order_ack_timeout_seconds=...). Kept separate from the
+    # gRPC servicer's default_timeout_seconds (which is the end-to-end gRPC
+    # budget) — the broker ack should normally complete well within that.
+    "order_ack_timeout_seconds": 30,
 }
 
 # Whether `init()` has been invoked (used by main.py for sanity log).
 _initialized = threading.Event()
+
+# Cooperative shutdown signal for the order-poll thread. Set by shutdown()
+# below; the poll loop checks this between iterations so the daemon thread
+# can exit cleanly instead of being killed mid-order on process termination.
+_STOP = threading.Event()
 
 
 def prepare(
@@ -43,17 +53,21 @@ def prepare(
     poll_frequency_ms: int = 200,
     session_start: str = "09:15",
     session_end: str = "15:30",
+    order_ack_timeout_seconds: int = 30,
 ) -> None:
     _RUN_CFG["account"] = account
     _RUN_CFG["strategy_id"] = strategy_id
     _RUN_CFG["poll_frequency_ms"] = poll_frequency_ms
     _RUN_CFG["session_start"] = session_start
     _RUN_CFG["session_end"] = session_end
+    _RUN_CFG["order_ack_timeout_seconds"] = order_ack_timeout_seconds
 
 
 def init(context):
     """GM SDK init callback. Keeps the strategy thread alive for `order_volume`
     calls and starts a daemon thread that drains REQUEST_QUEUE once per second.
+    The poll thread checks the module-level _STOP event each iteration so
+    `shutdown()` can stop it cleanly without losing in-flight order results.
     """
     logger.info(
         "[GM_TRADING] Initializing GM trading service (strategy_id=%s, account=%s)",
@@ -61,14 +75,17 @@ def init(context):
         _RUN_CFG["account"] or "(default)",
     )
 
+    import time as _time
+
     def _poll_loop():
-        while True:
+        while not _STOP.is_set():
             try:
                 on_schedule(context)
             except Exception as ex:
                 logger.exception("[GM_TRADING] poll loop error: %s", ex)
-            import time as _t
-            _t.sleep(1)
+            # Short sleeps so shutdown signal is observed within ~1s.
+            _STOP.wait(1.0)
+        logger.info("[GM_TRADING] Order poll thread exiting (shutdown requested)")
 
     t = threading.Thread(target=_poll_loop, name="order-poll", daemon=True)
     t.start()
@@ -76,6 +93,35 @@ def init(context):
 
     _initialized.set()
     logger.info("[GM_TRADING] GM trading service initialized successfully")
+
+
+def shutdown(timeout_seconds: float = 5.0) -> None:
+    """Signal the order-poll thread to stop and wait briefly for it to drain.
+
+    Called from main.py during process shutdown. The GM SDK's own event loop
+    (running on the gm-strategy thread) does not expose a clean stop API, so
+    that thread stays daemon=True and will be killed when the process exits.
+    The poll thread, however, can stop cooperatively — and any `_submit_order`
+    call it's currently inside will finish (or hit its 30s future timeout)
+    before the loop checks _STOP again, so we don't lose order results.
+    """
+    _STOP.set()
+    deadline = _time.time() + timeout_seconds
+    # Allow the in-flight on_schedule() iteration to finish so we don't cut
+    # an order placement in half.
+    while _time.time() < deadline and _STOP.is_set():
+        # No thread handle to join (we didn't store it); rely on the loop
+        # exiting on its own within the timeout. Poll-log surfaces if it didn't.
+        _time.sleep(0.2)
+        # Best-effort: if the queue is empty, we know the loop is idle.
+        if REQUEST_QUEUE.empty():
+            break
+    logger.info("[GM_TRADING] shutdown() complete")
+
+
+# Module-level import for shutdown()'s use; kept lazy to avoid cluttering
+# module import order during SDK initialization.
+import time as _time  # noqa: E402
 
 
 def on_schedule(context):
@@ -164,7 +210,7 @@ def _submit_order(order_volume_fn, job: PlaceOrderJob) -> None:
     # Block until on_order_status resolves the Future. This serializes order
     # processing so at most one order is in-flight, keeping pop_any() safe.
     try:
-        order = job.future.result(timeout=30)
+        order = job.future.result(timeout=_RUN_CFG["order_ack_timeout_seconds"])
         logger.info(
             "[GM_TRADING] Order resolved via callback: cl_ord_id=%s status=%s",
             cl_ord_id,

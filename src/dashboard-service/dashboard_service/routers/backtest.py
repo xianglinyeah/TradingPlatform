@@ -164,8 +164,11 @@ async def run_backtest(req: BacktestRunRequest) -> BacktestRunResponse:
         # Best-effort cleanup of the dangling replay session.
         try:
             await marketdata_replay_client.stop_replay(session_id)
-        except Exception:
-            pass
+        except Exception as cleanup_exc:
+            logger.warning(
+                "stop_replay cleanup failed for session %s (config-failure path): %s",
+                session_id, cleanup_exc,
+            )
         await _mark_audit_failed(audit_id, f"strategy-engine config failed: {exc}")
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -423,7 +426,10 @@ def _loads(v: Any) -> dict:
         return v
     try:
         return json.loads(v)
-    except Exception:
+    except Exception as exc:
+        # Log at debug: stored params may genuinely be plain strings (e.g.
+        # legacy rows); returning {} matches the existing contract.
+        logger.debug("strategy_params JSON parse failed, returning empty dict: %s", exc)
         return {}
 
 

@@ -42,7 +42,10 @@ spec:
         - name: POSTGRES_USER
           value: dev_user
         - name: POSTGRES_PASSWORD
-          value: dev_pass
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: postgres-password
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data

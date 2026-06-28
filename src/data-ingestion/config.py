@@ -60,7 +60,7 @@ class FundamentalsConfig:
     symbol_source: str = "CSI_ALL"
     symbols: List[str] = field(default_factory=list)
     universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols
-    daily_dir: str = r"D:\TradingPlatform\data\daily"
+    daily_dir: str = "/data/daily"
     symbols_cache_file: str = "symbols_cache.txt"
     request_delay_ms: int = 200
     retry_count: int = 2
@@ -84,7 +84,7 @@ class FundamentalsIncrementalConfig:
     symbols: List[str] = field(default_factory=list)
     symbol_filter: List[str] = field(default_factory=list)
     universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols/filter
-    daily_dir: str = r"D:\TradingPlatform\data\daily"
+    daily_dir: str = "/data/daily"
     symbols_cache_file: str = "symbols_cache.txt"
     request_delay_ms: int = 200
     retry_count: int = 2
@@ -102,8 +102,8 @@ class KlineIncrementalConfig:
     symbols: List[str] = field(default_factory=list)
     symbol_filter: List[str] = field(default_factory=list)
     universe_id: Optional[str] = None  # If set, overrides symbol_source/symbols/filter
-    daily_dir: str = r"D:\TradingPlatform\data\daily"
-    minute_dir: str = r"D:\TradingPlatform\data\minute\1min"
+    daily_dir: str = "/data/daily"
+    minute_dir: str = "/data/minute/1min"
     symbols_cache_file: str = "symbols_cache_kline.txt"
     request_delay_ms: int = 200
     retry_count: int = 2

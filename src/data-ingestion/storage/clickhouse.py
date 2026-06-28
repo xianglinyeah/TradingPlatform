@@ -129,6 +129,12 @@ class ClickHouseStorage:
             return 0
 
         import re
+        # ts_code is interpolated into the SQL string below. The regex check
+        # before interpolation allows only "6 digits + dot + 2 uppercase letters"
+        # (e.g. "600000.SH"), which is too restrictive to carry an injection
+        # payload. ClickHouse.Client parameterized placeholders are not supported
+        # for ALTER TABLE ... DELETE WHERE, so f-string with strict validation
+        # is the only viable approach here.
         ts_code_re = re.compile(r"^\d{6}\.[A-Z]{2}$")
         or_clauses = []
         for ts_code, from_dt, to_dt in ranges:

@@ -12,7 +12,7 @@ public class ControlMessage
 {
     public ControlMessageType Type { get; set; }
     public string SessionId { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; } = DateTime.Now;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public DateTime? CurrentVirtualTime { get; set; }
     public long? EventsSent { get; set; }
     public long? EventsTotal { get; set; }

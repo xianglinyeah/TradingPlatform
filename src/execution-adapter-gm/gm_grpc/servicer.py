@@ -63,6 +63,14 @@ def _format_dt_iso(dt) -> str:
 class GMTradingServicer(pb_grpc.GMTradingServicer):
     """Implementation of the five RPCs in gm_trading.proto."""
 
+    # Back-pressure timeout for enqueueing onto REQUEST_QUEUE. Deliberately
+    # short and NOT the same as default_timeout_seconds: if the GM SDK
+    # consumer thread has died or stalled, we want to reject the gRPC call
+    # quickly rather than block for 30s. The order-execution timeout (how
+    # long to wait for the broker to acknowledge) is a separate concern and
+    # is governed by default_timeout_seconds.
+    _QUEUE_PUT_TIMEOUT_SECONDS = 5.0
+
     def __init__(self, *, default_timeout_seconds: int = 30) -> None:
         self._default_timeout = default_timeout_seconds
 
@@ -99,7 +107,7 @@ class GMTradingServicer(pb_grpc.GMTradingServicer):
             future=future,
         )
         try:
-            REQUEST_QUEUE.put(job, timeout=5)
+            REQUEST_QUEUE.put(job, timeout=self._QUEUE_PUT_TIMEOUT_SECONDS)
         except queue.Full:
             logger.error("[GRPC] Request queue full (GM SDK stalled?). Rejecting order %s", request.order_id)
             return self._place_order_rejected(request.order_id, "request queue full — GM SDK consumer stalled")

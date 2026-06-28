@@ -91,6 +91,13 @@ spec:
             image: docker-data-ingestion:latest
             imagePullPolicy: Always
             command: ["/bin/bash", "-c"]
+            resources:
+              requests:
+                cpu: "200m"
+                memory: "512Mi"
+              limits:
+                cpu: "1"
+                memory: "2Gi"
             args:
               - |
                 echo "[CRONJOB] Starting universe_sync at $(date)"

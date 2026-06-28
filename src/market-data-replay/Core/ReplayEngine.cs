@@ -55,7 +55,7 @@ public class ReplayEngine : IReplayEngine
             }
 
             session.Status = ReplayStatus.Running;
-            session.StartedAt = DateTime.Now;
+            session.StartedAt = DateTime.UtcNow;
             await _sessionRepo.UpdateSessionAsync(session);
 
             _logger.LogInformation(
@@ -67,7 +67,7 @@ public class ReplayEngine : IReplayEngine
                 Type = ControlMessageType.StatusChange,
                 SessionId = sessionId,
                 NewStatus = ReplayStatus.Running,
-                Timestamp = DateTime.Now
+                Timestamp = DateTime.UtcNow
             });
 
             // Clear Kafka topic to avoid duplicate consumption
@@ -84,7 +84,7 @@ public class ReplayEngine : IReplayEngine
             {
                 _logger.LogWarning("No data loaded");
                 session.Status = ReplayStatus.Completed;
-                session.CompletedAt = DateTime.Now;
+                session.CompletedAt = DateTime.UtcNow;
                 await _sessionRepo.UpdateSessionAsync(session);
                 return;
             }
@@ -154,7 +154,7 @@ public class ReplayEngine : IReplayEngine
                         try
                         {
                             evt.SessionId = sessionId;
-                            evt.ReplayTime = DateTime.Now;
+                            evt.ReplayTime = DateTime.UtcNow;
                             evt.SequenceNumber = Interlocked.Increment(ref sequenceNumber);
                             await _publisher.PublishMarketDataAsync(evt);
                             _logger.LogDebug("✓ Send success: {Symbol} @ {Time}", evt.Symbol, evt.EventTime);
@@ -205,7 +205,7 @@ public class ReplayEngine : IReplayEngine
             await _sessionRepo.UpdateSessionAsync(session);
 
             session.Status = ReplayStatus.Completed;
-            session.CompletedAt = DateTime.Now;
+            session.CompletedAt = DateTime.UtcNow;
             await _sessionRepo.UpdateSessionAsync(session);
 
             await _publisher.FlushAsync();

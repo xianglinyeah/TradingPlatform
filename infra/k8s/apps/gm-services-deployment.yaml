@@ -18,7 +18,7 @@ metadata:
 data:
   config.yaml: |
     gm:
-      token: "placeholder"
+      token: ""  # Real token injected from gm-secrets via GM_TOKEN env var
       address: "host.docker.internal:7001"
       symbols:
         - "SHSE.600000"
@@ -66,6 +66,16 @@ spec:
               key: token
         - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
           value: "python"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        # No liveness/readiness probe: market-data-gm is a pure Kafka producer
+        # with no inbound port. Adding a /health HTTP endpoint to main.py is
+        # the right long-term fix; meanwhile, k8s only knows container-alive.
         volumeMounts:
         - name: config
           mountPath: /config
@@ -98,7 +108,7 @@ metadata:
 data:
   config.yaml: |
     gm:
-      token: "placeholder"
+      token: ""  # Real token injected from gm-secrets via GM_TOKEN env var
       address: "host.docker.internal:7001"
       strategy_id: "gm-trading-adaptor"
       paper_account_id: "placeholder"
@@ -151,6 +161,27 @@ spec:
               key: paper_account_id
         - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
           value: "python"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        # gRPC port 5005 — TCP socket probe verifies the listener is up.
+        # A real gRPC health check (grpc_health_probe) is a stronger signal
+        # but requires the binary baked into the image; deferred.
+        livenessProbe:
+          tcpSocket:
+            port: 5005
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: 5005
+          initialDelaySeconds: 10
+          periodSeconds: 10
         volumeMounts:
         - name: config
           mountPath: /config

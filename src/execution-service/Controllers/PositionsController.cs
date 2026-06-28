@@ -3,7 +3,7 @@ using ExecutionService.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-namespace Execution.Service.Controllers;
+namespace ExecutionService.Controllers;
 
 /// <summary>
 /// Read-only REST query API for live position state.

@@ -99,8 +99,12 @@ def main(argv=None) -> int:
     gm_error = {}
 
     def _run_gm():
-        # GM SDK calls signal.signal() internally, which fails on non-main
-        # threads in Linux. Neutralize it before calling run().
+        # GM SDK calls signal.signal() internally, which raises on non-main
+        # threads in Linux. Patch the *module attribute* only for the duration
+        # of run() and restore it afterward — previously the patch was
+        # permanent and silenced every subsequent signal.signal() call across
+        # the whole process (including grpc / futures libraries that use
+        # signals for interrupt handling).
         import signal as _signal
         _orig_signal = _signal.signal
         _signal.signal = lambda *a, **kw: None
@@ -115,6 +119,10 @@ def main(argv=None) -> int:
         except Exception as ex:
             log.exception("GM trading service event loop exception: %s", ex)
             gm_error["err"] = ex
+        finally:
+            # Restore the real signal handler so gRPC / shutdown handlers
+            # that need signals still work after the GM loop exits.
+            _signal.signal = _orig_signal
 
     gm_thread = threading.Thread(target=_run_gm, name="gm-strategy", daemon=True)
     gm_thread.start()
@@ -154,6 +162,13 @@ def main(argv=None) -> int:
         log.info("Interrupted by user, shutting down")
         server.stop(grace=2.0)
     finally:
+        # Cooperative shutdown of the order-poll thread so we don't cut an
+        # order placement in half. The GM SDK's own event loop has no clean
+        # stop API and stays daemon=True; it will be killed on process exit.
+        try:
+            gm_strategy.shutdown(timeout_seconds=5.0)
+        except Exception as ex:
+            log.warning("gm_strategy.shutdown failed: %s", ex)
         log.info("execution_adapter_gm stopped")
 
     return 0

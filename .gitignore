@@ -216,6 +216,12 @@ packages/
 # dotnet publish output (required by Dockerfile but regenerable on build)
 **/artifacts/market-data-replay/
 
+# Legacy scripts (obsolete PowerShell that referenced C# .dll/.exe paths
+# from before the Python rewrite). Kept locally for historical reference
+# but no longer tracked in git — they are dead and reading them risks
+# confusion. See scripts/legacy/README.md while it still exists.
+scripts/legacy/
+
 # Node.js (if any frontend)
 node_modules/
 npm-debug.log*

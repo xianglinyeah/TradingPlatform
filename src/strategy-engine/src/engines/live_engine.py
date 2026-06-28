@@ -2,6 +2,7 @@
 from confluent_kafka import Consumer
 import json
 import logging
+import signal as signal_module
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -267,6 +268,20 @@ class LiveEngine(BaseEngine):
 
         self.start_time = datetime.now()
 
+        # Translate SIGTERM (k8s pod shutdown signal) into KeyboardInterrupt
+        # so the existing `except KeyboardInterrupt` + `finally: consumer.close()`
+        # path runs. Without this, Python's default SIGTERM handling may exit
+        # the process without unwinding the try/finally, leaving broker to
+        # evict the consumer via session.timeout.ms (3 min) — during which
+        # the new pod can't complete its rebalance. Raising from the handler
+        # is safe because Python serialises signal delivery on the main
+        # thread and rdkafka's poll() returns promptly on signal arrival.
+        def _on_sigterm(signum, frame):
+            logger.info("SIGTERM received, raising KeyboardInterrupt for graceful shutdown")
+            raise KeyboardInterrupt
+
+        prev_sigterm = signal_module.signal(signal_module.SIGTERM, _on_sigterm)
+
         # Create Kafka consumer using confluent-kafka (librdkafka-based, same
         # library used by market-data-gm). Configuration matches the previous
         # kafka-python settings: auto-commit on, earliest offset reset for new
@@ -278,8 +293,20 @@ class LiveEngine(BaseEngine):
             # expired offsets; once offsets are committed this is unused.
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': True,
-            'session.timeout.ms': 180000,    # 3 minutes (was 30s originally)
-            'heartbeat.interval.ms': 10000,  # 10 seconds (was 3s originally)
+            # session.timeout.ms: how long the broker waits for a heartbeat
+            # before declaring this member dead and triggering a forced
+            # rebalance. Previously 180000 (3 min) — far too long: when a
+            # pod was SIGKILLed without sending LeaveGroup (the previous
+            # default-SIGTERM behaviour), the broker held the dead member
+            # in the group for 3 minutes, during which the replacement pod
+            # couldn't complete its rebalance. Combined with the explicit
+            # SIGTERM handler above (which sends LeaveGroup immediately on
+            # graceful shutdown), 45s is long enough to tolerate GC pauses
+            # and short enough that an actually-dead member is evicted in
+            # under a minute. Kafka recommends heartbeat ≤ session/3;
+            # 10s heartbeat / 45s session = 1/4.5, within spec.
+            'session.timeout.ms': 45000,
+            'heartbeat.interval.ms': 10000,
             # Refresh topic metadata every 10s instead of librdkafka's 5-min
             # default. Required for the smoke test, which deletes and recreates
             # the topic to clear it: without a fast refresh, the consumer can
@@ -346,6 +373,10 @@ class LiveEngine(BaseEngine):
 
         finally:
             consumer.close()
+            # Restore the previous SIGTERM disposition (defensive — main.py
+            # exits after run() returns, but tests / embedding callers may
+            # call run() multiple times).
+            signal_module.signal(signal_module.SIGTERM, prev_sigterm)
             self._print_final_report()
 
     def _log_status(self, current_bar: BarData):

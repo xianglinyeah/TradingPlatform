@@ -106,7 +106,14 @@ class DevCommand:
         return ok
 
     def _clear_kafka_topic(self, topic: str) -> bool:
-        """Delete and recreate a Kafka topic to clear all messages."""
+        """Delete and recreate a Kafka topic to clear all messages.
+
+        Also resets consumer group offsets for known subscribers so they
+        re-consume from the beginning of the freshly-created topic.
+        Without this reset, a group with committed offsets past the new
+        topic's log-end would skip every message (since the broker treats
+        "committed offset > log-end" as "already consumed").
+        """
         print(f"[KAFKA] Clearing topic '{topic}'...")
         try:
             # Delete (async in Kafka, takes a few seconds)
@@ -129,6 +136,20 @@ class DevCommand:
                 cwd=self.project_root, capture_output=True, text=True, timeout=30,
             )
             print(f"[KAFKA] topic '{topic}' cleared.")
+
+            # Reset consumer group offsets to earliest for the new topic.
+            # Without this, a group whose committed offset is past the new
+            # topic's log-end would skip every message.
+            for group in ("strategy_engine", "execution_service"):
+                subprocess.run(
+                    ["kubectl", "exec", "-n", "infrastructure", "kafka-0", "--",
+                     "bash", "-c",
+                     f"/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server "
+                     f"kafka.infrastructure:9092 --group {group} --topic {topic} "
+                     f"--reset-offsets --to-earliest --execute"],
+                    cwd=self.project_root, capture_output=True, text=True, timeout=30,
+                )
+            print(f"[KAFKA] consumer group offsets reset to earliest.")
             return True
         except Exception as e:
             print(f"[KAFKA] clear failed (non-fatal): {e}")

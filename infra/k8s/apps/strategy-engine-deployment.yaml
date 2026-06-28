@@ -59,12 +59,15 @@ spec:
 
         env:
         # Kafka configuration
+        # KAFKA_GROUP_ID is intentionally NOT set here — strategy-engine reads
+        # kafka_group_id from its YAML config (live.yaml/e2e.yaml) which uses
+        # the single canonical group "strategy_engine". Setting it via env var
+        # would shadow the YAML value and risks the rebalance-stuck failure
+        # mode documented in memory (multiple groups → GroupNotEmpty on delete).
         - name: KAFKA_BROKERS
           value: "kafka.infrastructure:9092"
         - name: KAFKA_TOPIC
           value: "market.data"
-        - name: KAFKA_GROUP_ID
-          value: "strategy_service_live"
 
         # Execution service configuration
         - name: EXECUTION_SERVICE_ADDRESS

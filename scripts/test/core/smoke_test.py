@@ -36,6 +36,12 @@ def run_smoke_test():
         # 2. Wait for replay to finish
         print("[2/3] Waiting for pipeline to process...")
         helper.wait_for_session_complete(session_id, replay_id, timeout=60)
+        # Replay "Completed" only means all bars are published to Kafka.
+        # strategy_engine may still be processing them; querying DB before
+        # it catches up produces a partial trade count and false-fails.
+        if not helper.wait_for_strategy_engine_drained(timeout_seconds=60):
+            print("[FAIL] strategy_engine did not finish consuming replay bars")
+            return False
 
         # 3. Verify database has results
         print("[3/3] Checking PostgreSQL results...")

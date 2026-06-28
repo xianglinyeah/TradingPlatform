@@ -84,7 +84,22 @@ spec:
             cpu: "1"
             memory: "2Gi"
 
-        # Health probes disabled (replay API does not expose HTTP /health endpoint)
+        # market-data-replay serves a REST API on port 8080. The root path "/"
+        # returns a 200 with a banner string (Program.cs:MapGet("/")). Use it
+        # as a liveness signal until a proper /health endpoint is added.
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
 
         volumeMounts:
         - name: data

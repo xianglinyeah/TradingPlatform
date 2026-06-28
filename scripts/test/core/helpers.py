@@ -91,6 +91,145 @@ class BacktestTestHelper:
         print(f"[OK] Local backtest completed: {result['total_trades']} trades, PnL={result['total_pnl']:.2f}")
         return result
 
+    def wait_for_strategy_engine_ready(self, timeout_seconds: int = 120) -> bool:
+        """Block until BOTH strategy_engine AND execution_service Kafka consumer
+        groups have stable partition assignments on `market.data`.
+
+        Why both:
+          - strategy_engine must be ready so it consumes replay bars and
+            emits gRPC orders.
+          - execution_service must ALSO be ready because it caches the
+            latest bar per symbol from Kafka; if its consumer hasn't been
+            assigned a partition when the gRPC arrives, the cache is empty
+            and orders are rejected with NO_MARKET_DATA (§1 cache race).
+
+        This is NOT a retry-until-pass: it is a clean readiness predicate
+        ("partition 0 is assigned to a live consumer with a populated
+        CONSUMER-ID"). If the predicate fails after `timeout_seconds`, we
+        return False so the caller can fail loudly.
+        """
+        groups = ["strategy_engine", "execution_service"]
+        pending = set(groups)
+        deadline = time.time() + timeout_seconds
+        last_states = {}
+
+        print(f"[READY] Waiting for consumer group assignments: {sorted(pending)}")
+
+        while pending and time.time() < deadline:
+            for group in list(pending):
+                state, ready = self._describe_consumer_group_ready(group)
+                last_states[group] = state
+                if ready:
+                    print(f"[READY] {group} ready: {state}")
+                    pending.discard(group)
+            if pending:
+                time.sleep(3)
+
+        if pending:
+            print(f"[READY][FAIL] consumer groups not ready after {timeout_seconds}s: "
+                  f"still pending={sorted(pending)}, last states={last_states}")
+            return False
+        return True
+
+    def _describe_consumer_group_ready(self, group: str):
+        """Return (state_description, is_ready) for one consumer group.
+
+        is_ready=True iff the describe output shows a data row for
+        market.data partition 0 with a populated CONSUMER-ID.
+        """
+        import os
+        cmd = [
+            "kubectl", "exec", "-n", "infrastructure", "kafka-0", "--",
+            "/opt/kafka/bin/kafka-consumer-groups.sh",
+            "--bootstrap-server", "localhost:9092",
+            "--describe", "--group", group,
+        ]
+        try:
+            env = {"MSYS_NO_PATHCONV": "1", "PATH": os.environ.get("PATH", "")}
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=10,
+                env={**os.environ, **env},
+            )
+        except Exception as ex:
+            return (f"kubectl-failed: {ex}", False)
+
+        combined = (proc.stdout + proc.stderr).lower()
+        if "rebalancing" in combined:
+            return ("rebalancing", False)
+
+        row_match = re.search(
+            rf"^{re.escape(group)}\s+market\.data\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)",
+            proc.stdout, re.MULTILINE,
+        )
+        if not row_match:
+            return ("no-data-row", False)
+        partition, current, log_end, lag, consumer_id = row_match.groups()
+        if not consumer_id or consumer_id.strip() == "-":
+            return (f"row-but-no-consumer-id (lag={lag})", False)
+        return (f"partition={partition} offset={current}/{log_end} lag={lag}", True)
+
+    def wait_for_strategy_engine_drained(self, timeout_seconds: int = 60) -> bool:
+        """Wait until BOTH strategy_engine AND execution_service have LAG=0
+        on market.data.
+
+        strategy_engine must finish so all signals + gRPC orders are emitted.
+        execution_service must finish so its MarketDataCache reflects the
+        latest bar (avoiding NO_MARKET_DATA rejections on next replay if
+        one starts immediately). For a single smoke test the more critical
+        of the two is strategy_engine (orders land in DB only after it
+        processes the last bar), but checking both keeps the predicate
+        symmetric and future-proof.
+
+        Returns True if both reach lag=0 within timeout.
+        """
+        import os
+        groups = ["strategy_engine", "execution_service"]
+        print(f"[DRAIN] Waiting for consumer groups to reach lag=0: {groups}")
+        deadline = time.time() + timeout_seconds
+        last_lags = {g: "?" for g in groups}
+
+        while time.time() < deadline:
+            all_drained = True
+            for group in groups:
+                cmd = [
+                    "kubectl", "exec", "-n", "infrastructure", "kafka-0", "--",
+                    "/opt/kafka/bin/kafka-consumer-groups.sh",
+                    "--bootstrap-server", "localhost:9092",
+                    "--describe", "--group", group,
+                ]
+                try:
+                    env = {"MSYS_NO_PATHCONV": "1", "PATH": os.environ.get("PATH", "")}
+                    proc = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=10,
+                        env={**os.environ, **env},
+                    )
+                except Exception:
+                    continue
+
+                if "rebalancing" in (proc.stdout + proc.stderr).lower():
+                    all_drained = False
+                    continue
+
+                row_match = re.search(
+                    rf"^{re.escape(group)}\s+market\.data\s+\S+\s+(\S+)\s+(\S+)\s+(\S+)",
+                    proc.stdout, re.MULTILINE,
+                )
+                if not row_match:
+                    all_drained = False
+                    continue
+                current, log_end, lag = row_match.groups()
+                last_lags[group] = lag
+                if lag == "-" or current == "-" or int(lag) != 0:
+                    all_drained = False
+
+            if all_drained:
+                print(f"[DRAIN] all drained: {last_lags}")
+                return True
+            time.sleep(2)
+
+        print(f"[DRAIN][FAIL] did not reach lag=0 within {timeout_seconds}s (last: {last_lags})")
+        return False
+
     def start_replay_session(self, start_date: str, end_date: str,
                            symbols: List[str], speed: int = 10000) -> str:
         """
@@ -105,6 +244,17 @@ class BacktestTestHelper:
         Returns:
             Session ID (with e2e-test prefix)
         """
+        # Pre-flight readiness: strategy_engine Kafka consumer must have a
+        # stable partition assignment before we publish bars, otherwise the
+        # smoke test reports a false 0-trades failure even when the system
+        # is healthy (just slow to rebalance after a restart).
+        if not self.wait_for_strategy_engine_ready(timeout_seconds=120):
+            raise RuntimeError(
+                "strategy_engine consumer group is not ready; aborting replay. "
+                "This indicates a stuck rebalance — investigate the Kafka "
+                "consumer group state before re-running."
+            )
+
         print(f"[REPLAY] Starting ReplayService: {start_date} ~ {end_date}, {speed}x speed")
 
         response = requests.post(

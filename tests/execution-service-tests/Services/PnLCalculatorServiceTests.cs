@@ -60,49 +60,29 @@ public class PnLCalculatorServiceTests
     }
 
     [Fact]
-    public async Task CalculateRealizedPnLAsync_ShouldReturnCommission()
+    public async Task CalculateRealizedPnLAsync_NotImplemented_Throws()
     {
         // Arrange
         var position = new Position { Symbol = "600000.SH" };
         var trade = new Trade { Commission = 5.5m };
 
-        // Act
-        var result = await _sut.CalculateRealizedPnLAsync(position, trade);
-
-        // Assert
-        result.Should().Be(5.5m);
+        // Act + Assert: stub throws so any future caller fails loudly rather
+        // than silently receiving just the commission (the old behavior was
+        // not actual realized PnL). Realized PnL lives on Position.RealizedPnL.
+        var act = async () => await _sut.CalculateRealizedPnLAsync(position, trade);
+        await act.Should().ThrowAsync<NotSupportedException>();
     }
 
     [Fact]
-    public void CalculatePerformanceMetrics_WhenNoTrades_ShouldReturnZeroMetrics()
+    public void CalculatePerformanceMetrics_NotImplemented_Throws()
     {
         // Arrange
         var trades = new List<Trade>();
 
-        // Act
-        var result = _sut.CalculatePerformanceMetrics(trades);
-
-        // Assert
-        result.TotalReturn.Should().Be(0);
-        result.TotalTrades.Should().Be(0);
-        result.WinRate.Should().Be(0);
-    }
-
-    [Fact]
-    public void CalculatePerformanceMetrics_WhenTradesExist_ShouldCalculateMetrics()
-    {
-        // Arrange
-        var trades = new List<Trade>
-        {
-            new() { Price = 10.0m, Quantity = 100, Side = "sell" },
-            new() { Price = 12.0m, Quantity = 50, Side = "sell" }
-        };
-
-        // Act
-        var result = _sut.CalculatePerformanceMetrics(trades);
-
-        // Assert
-        result.TotalTrades.Should().Be(2);
-        result.TotalReturn.Should().BeGreaterThan(0);
+        // Act + Assert: Sharpe / MaxDrawdown require a return time-series that
+        // the per-trade list does not provide. Throwing prevents silent
+        // zero-return / zero-volatility output.
+        var act = () => _sut.CalculatePerformanceMetrics(trades);
+        act.Should().Throw<NotSupportedException>();
     }
 }

@@ -64,7 +64,7 @@ def main():
     else:
         print("[FAIL] GM Adapter process is not running")
         print("\nSteps to start GM Adapter:")
-        print("1. cd D:\\BackTesting\\BackTesting\\execution_adapter_gm")
+        print("1. cd D:\\TradingPlatform\\src\\execution-adapter-gm")
         print("2. .\\start_gm_adapter.ps1")
         return
 

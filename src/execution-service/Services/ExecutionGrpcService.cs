@@ -86,7 +86,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
         using (OrderProcessingDuration.NewTimer())
         OrdersReceived.WithLabels(request.Symbol, request.Side.ToString()).Inc();
 
-        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        var timestamp = DateTime.UtcNow.ToString("HH:mm:ss.fff");
         _logger.LogInformation("[{Timestamp}] Received gRPC order request: Session={Session}, Symbol={Symbol}, Side={Side}, Qty={Qty}, Price={Price}",
             timestamp, request.SessionId, request.Symbol, request.Side, request.Quantity, request.Price);
 
@@ -110,7 +110,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
                 request.TradeTime ?? "(empty)", order.CreatedAt.ToString("s"), order.CreatedAt.ToString("yyyy-MM-dd"));
 
             _logger.LogInformation("[{Timestamp}] 📝 Created order: OrderId={OrderId}, SessionId={SessionId}, Symbol={Symbol}, Side={Side}, Quantity={Quantity}, Price={Price}",
-                DateTime.Now.ToString("HH:mm:ss.fff"), order.OrderId, order.SessionId, order.Symbol, order.Side, order.Quantity, order.Price);
+                DateTime.UtcNow.ToString("HH:mm:ss.fff"), order.OrderId, order.SessionId, order.Symbol, order.Side, order.Quantity, order.Price);
 
             // Market Rules Check (exchange mandatory rules, e.g. T+1 settlement rule, no naked short selling)
             var marketRuleResult = await _marketRuleValidator.ValidateOrderAsync(order, DateOnly.FromDateTime(order.CreatedAt));

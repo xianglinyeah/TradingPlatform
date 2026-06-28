@@ -43,7 +43,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var dataPath = builder.Configuration.GetValue<string>("DataPath")
-    ?? @"D:\BackTesting\data\minute\1min";
+    ?? @"/data/minute/1min";
 
 // Loader selection: ClickHouse is the default; Parquet stays available as a
 // config-driven fallback so we can roll back without redeploying reads.

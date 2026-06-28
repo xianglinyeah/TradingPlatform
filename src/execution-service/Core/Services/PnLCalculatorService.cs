@@ -32,29 +32,23 @@ public class PnLCalculatorService : IPnLCalculator
 
     public Task<decimal> CalculateRealizedPnLAsync(Position position, Trade trade)
     {
-        return Task.FromResult(trade.Commission); // Simplified version, should actually be calculated in Position
+        // NOT IMPLEMENTED. Realized PnL is computed inline by Position.Reduce
+        // and persisted on Position.RealizedPnL — this method exists only to
+        // satisfy IPnLCalculator and is not called by any code path or test.
+        // Throwing rather than returning a wrong value (the previous behavior
+        // returned just the commission, which is not PnL at all) so any future
+        // caller sees an explicit failure instead of silently wrong data.
+        throw new NotSupportedException(
+            "CalculateRealizedPnLAsync is not implemented. Read Position.RealizedPnL instead.");
     }
 
     public PerformanceMetrics CalculatePerformanceMetrics(List<Trade> trades)
     {
-        if (!trades.Any())
-        {
-            return new PerformanceMetrics(0, 0, 0, 0, 0);
-        }
-
-        var totalPnL = trades.Sum(t => t.Price * t.Quantity);
-        var totalTrades = trades.Count;
-
-        // Simplified performance metrics calculation
-        var winningTrades = trades.Count(t => t.Side == "sell" && t.Price > 0); // Simplified
-        var winRate = totalTrades > 0 ? (double)winningTrades / totalTrades : 0.0;
-
-        return new PerformanceMetrics(
-            totalPnL,
-            0.0, // SharpeRatio requires more complex calculation
-            0.0, // MaxDrawdown requires historical data
-            winRate,
-            totalTrades
-        );
+        // NOT IMPLEMENTED. Sharpe ratio and max drawdown require a return
+        // series over time, which is not tracked per-trade. Returning zeroes
+        // silently (the previous behavior) would mislead any caller into
+        // thinking the strategy had zero volatility / zero drawdown.
+        throw new NotSupportedException(
+            "CalculatePerformanceMetrics is not implemented. Sharpe / MaxDrawdown require a time-series of returns, not a trade list.");
     }
 }

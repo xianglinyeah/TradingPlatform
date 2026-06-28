@@ -70,7 +70,7 @@ def check_gm_adapter_logs():
     """Check GM Adapter logs"""
     print("\nChecking GM Adapter logs...")
 
-    log_file = "D:/BackTesting/logs/execution-adapter-gm/execution-adapter-gm-realtime.log"
+    log_file = "D:/TradingPlatform/logs/execution-adapter-gm/execution-adapter-gm-realtime.log"
 
     try:
         with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -91,7 +91,7 @@ def run_smoke_test():
 
     try:
         result = subprocess.run(
-            ['python', 'D:/BackTesting/scripts/test/smart_e2e.py', '--smoke'],
+            ['python', 'D:/TradingPlatform/scripts/test/smart_e2e.py', '--smoke'],
             capture_output=True,
             text=True,
             timeout=120,
@@ -117,7 +117,7 @@ def check_execution_service_logs():
     """Check ExecutionService logs"""
     print("\nChecking ExecutionService logs (PAPER_BROKER mode)...")
 
-    log_file = "D:/BackTesting/logs/execution-service/execution-service-realtime.log"
+    log_file = "D:/TradingPlatform/logs/execution-service/execution-service-realtime.log"
 
     try:
         with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -141,7 +141,7 @@ def check_gm_adapter_activity():
     """Check GM Adapter activity logs"""
     print("\nChecking GM Adapter activity logs...")
 
-    log_file = "D:/BackTesting/logs/execution-adapter-gm/execution-adapter-gm-realtime.log"
+    log_file = "D:/TradingPlatform/logs/execution-adapter-gm/execution-adapter-gm-realtime.log"
 
     try:
         with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -177,7 +177,7 @@ def main():
 
     if not services["GM Adapter"]:
         print("\n[ERROR] GM Adapter not running, please start it first:")
-        print("  cd D:\\BackTesting\\BackTesting\\execution_adapter_gm")
+        print("  cd D:\\TradingPlatform\\src\\execution-adapter-gm")
         print("  .\\start_gm_adapter.ps1")
         return
 
