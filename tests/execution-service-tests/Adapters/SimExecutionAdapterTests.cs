@@ -38,6 +38,7 @@ public class SimExecutionAdapterTests
             _mockRiskManager.Object,
             _mockAccountManager.Object,
             settings,
+            priceLimitChecker: null,  // existing tests predate §4
             _mockLogger.Object
         );
     }

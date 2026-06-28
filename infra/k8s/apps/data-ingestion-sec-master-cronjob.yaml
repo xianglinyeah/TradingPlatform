@@ -1,0 +1,48 @@
+# data-ingestion CronJob — daily refresh of market_ref.sec_master
+#
+# Pulls the GM SDK's instrument classification (stocks / convertible bonds /
+# ETFs / REITs) so execution-service can pick the right IMarketRule and the
+# right price-limit band per symbol. The classification changes slowly (new
+# listings, ST designation changes, delistings) so a daily 06:00 Beijing run
+# is more than sufficient.
+#
+# Prerequisites: same gm-secrets used by the main data-ingestion CronJob.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-ingestion-sec-master
+  namespace: trading-platform
+spec:
+  schedule: "0 6 * * *"                # 06:00 Beijing (k3s interprets as Asia/Shanghai)
+  timeZone: Asia/Shanghai
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600      # Max 1 hour per run
+      template:
+        spec:
+          containers:
+          - name: data-ingestion
+            image: docker-data-ingestion:latest
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-u", "main.py"]
+            args:
+              - /config/config.yaml
+              - --mode=sec_master_sync
+            env:
+            - name: GM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gm-secrets
+                  key: token
+            volumeMounts:
+            - name: config
+              mountPath: /config
+          volumes:
+          - name: config
+            configMap:
+              name: data-ingestion-config
+          restartPolicy: OnFailure

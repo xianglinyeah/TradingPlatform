@@ -57,7 +57,7 @@ public class SimExecutionAdapterTifTests
         });
         return new SimExecutionAdapter(
             _mockPnL.Object, _mockRisk.Object, _mockAccount.Object,
-            settings, _mockLogger.Object);
+            settings, priceLimitChecker: null, _mockLogger.Object);
     }
 
     private static MarketData Md(decimal close = 100m) => new()

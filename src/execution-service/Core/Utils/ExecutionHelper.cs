@@ -64,8 +64,9 @@ public static class ExecutionHelper
                 break;
 
             default:
-                executionPrice = basePrice;
-                break;
+                throw new NotSupportedException(
+                    $"OrderType {order.OrderType} is not implemented in slippage calculation. " +
+                    "Only Market, Limit, and Stop are supported.");
         }
 
         return executionPrice;
@@ -139,6 +140,19 @@ public static class ExecutionHelper
             ? marketData.Close + slippage
             : marketData.Close - slippage;
     }
+
+    /// <summary>
+    /// Whether a Stop order's trigger price has been crossed by the latest bar.
+    ///
+    /// Buy stops trigger when the market trades at or above the stop (typical
+    /// use: stop-loss for a short, or breakout entry). Sell stops trigger when
+    /// the market trades at or below the stop (typical use: stop-loss for a
+    /// long, or breakdown entry). Symmetric and unambiguous.
+    /// </summary>
+    public static bool IsStopTriggered(Order order, MarketData marketData)
+        => order.Side == OrderSide.Buy
+            ? marketData.Close >= order.StopPrice
+            : marketData.Close <= order.StopPrice;
 
     // ====================================================================
     // P1.1: Partial fill splitting

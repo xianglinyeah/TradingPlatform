@@ -304,3 +304,48 @@ def stk_basic(symbol: str, fields_csv: str,
     """Fetch daily basic (time-series, single symbol)."""
     return _ts_call(_sdk().stk_get_daily_basic,
                     symbol, fields_csv, start_date, end_date, None, None)
+
+
+# ============================================================
+#  Security master — instrument classification
+# ============================================================
+
+# GM SDK sec_type1 enumeration (subset documented in GM API reference).
+# Only the values we actively ingest are exposed as named constants here;
+# additional values can be discovered at runtime by passing the integer
+# directly to get_symbol_infos.
+SEC_TYPE_STOCK = 1010            # A-share stocks (main / ChiNext / STAR / BSE)
+SEC_TYPE_CONVERTIBLE_BOND = 1030  # Convertible bonds (T+0)
+SEC_TYPE_ETF = 1090              # Exchange-traded funds
+SEC_TYPE_REIT = 1110             # Real-estate investment trusts
+SEC_TYPE_BOND = 1020             # Plain bonds
+SEC_TYPE_FUND = 1100             # Open-end funds (LOF / others)
+
+
+def get_symbol_infos(sec_type1: int, symbols: Optional[List[str]] = None) -> List[dict]:
+    """Wrap `get_symbol_infos` — security master / contract info.
+
+    Args:
+        sec_type1: GM SDK security-class code (see SEC_TYPE_* constants).
+            Required because the SDK always classifies by sec_type1 first.
+        symbols: Optional list of GM-format codes ('SHSE.600000'). When None,
+            every instrument of the given sec_type1 is returned (can be many
+            thousands — the SDK paginates internally).
+
+    Returns:
+        List of dicts as returned by the SDK. Each row typically contains
+        `symbol`, `sec_name`, `exchange`, `sec_type1`, `sec_type2`, `sec_id`,
+        `board` (where applicable), `is_suspended`, etc. Field names vary
+        slightly across SDK versions — the sec_master pipeline normalizes
+        them defensively.
+    """
+    sdk = _sdk()
+    kwargs = {"sec_type1": sec_type1, "df": True}
+    if symbols:
+        # SDK accepts a comma-separated string for `symbols`.
+        kwargs["symbols"] = ",".join(symbols)
+    df = sdk.get_symbol_infos(**kwargs)
+    if df is None or len(df) == 0:
+        return []
+    return df.to_dict("records")
+

@@ -240,7 +240,10 @@ class BacktestTestHelper:
                     COUNT(CASE WHEN side = 'sell' THEN 1 END) as sell_trades,
                     SUM(CASE WHEN side = 'buy' THEN quantity ELSE 0 END) as buy_quantity,
                     ROUND(AVG(CASE WHEN side = 'buy' THEN price END)::numeric, 2) as avg_buy_price,
-                    ROUND(AVG(CASE WHEN side = 'sell' THEN price END)::numeric, 2) as avg_sell_price
+                    ROUND(AVG(CASE WHEN side = 'sell' THEN price END)::numeric, 2) as avg_sell_price,
+                    COALESCE(SUM(commission), 0) as total_commission,
+                    COALESCE(SUM(CASE WHEN side = 'buy' THEN quantity ELSE 0 END)
+                           - SUM(CASE WHEN side = 'sell' THEN quantity ELSE 0 END), 0) as final_position
                 FROM trades
                 WHERE session_id = %s
             """, (session_id,))
@@ -255,7 +258,11 @@ class BacktestTestHelper:
                 "sell_trades": row[2],
                 "buy_quantity": row[3],
                 "avg_buy_price": float(row[4]) if row[4] else 0.0,
-                "avg_sell_price": float(row[5]) if row[5] else 0.0
+                "avg_sell_price": float(row[5]) if row[5] else 0.0,
+                # Deterministic structural fields (added 2026-06-28 after §1
+                # cache race made PnL non-deterministic in 10000x replay).
+                "total_commission": float(row[6]) if row[6] is not None else 0.0,
+                "final_position": float(row[7]) if row[7] is not None else 0.0,
             }
 
             # Calculate PnL

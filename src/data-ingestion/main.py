@@ -8,6 +8,7 @@ Modes:
     fundamentals              Full fundamentals back-fill (8 tables)
     fundamentals_incremental  Pt multi-symbol incremental (8 tables)
     universe_sync             Refresh market_ref.universe_member from GM SDK
+    sec_master_sync           Refresh market_ref.sec_master instrument classification
 """
 from __future__ import annotations
 
@@ -79,10 +80,14 @@ def main(argv=None) -> int:
         elif mode_l == "universe_sync":
             from pipelines.universe.sync import sync_universe
             sync_universe(cfg.storage.connection_string)
+        elif mode_l == "sec_master_sync":
+            from pipelines.sec_master.sync import sync_sec_master
+            sync_sec_master(cfg.storage.connection_string)
         else:
             log.error(
                 "Unknown --mode=%s. Valid: kline | kline_incremental | "
-                "fundamentals | fundamentals_incremental | universe_sync",
+                "fundamentals | fundamentals_incremental | universe_sync | "
+                "sec_master_sync",
                 mode,
             )
             return 2

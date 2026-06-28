@@ -2,6 +2,8 @@ using ExecutionService.Models;
 using ExecutionService.Core.Adapters;
 using ExecutionService.Core.Services;
 using ExecutionService.Core.MarketRules;
+using ExecutionService.Core.MarketFeed;
+using ExecutionService.Core.Utils;
 using ExecutionService.Core.Events;
 using Grpc.Core;
 using Prometheus;
@@ -31,6 +33,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
     private readonly IPnLCalculator _pnlCalculator;
     private readonly IRiskManager _riskManager;
     private readonly IMarketRuleValidator _marketRuleValidator;
+    private readonly MarketDataCache _marketDataCache;
     private readonly OrderUpdateChannel _orderUpdateChannel;
     private readonly ILogger<ExecutionGrpcService> _logger;
 
@@ -41,6 +44,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
         IPnLCalculator pnlCalculator,
         IRiskManager riskManager,
         IMarketRuleValidator marketRuleValidator,
+        MarketDataCache marketDataCache,
         OrderUpdateChannel orderUpdateChannel,
         ILogger<ExecutionGrpcService> logger)
     {
@@ -50,6 +54,7 @@ public class ExecutionGrpcService : Execution.ExecutionBase
         _pnlCalculator = pnlCalculator;
         _riskManager = riskManager;
         _marketRuleValidator = marketRuleValidator;
+        _marketDataCache = marketDataCache;
         _orderUpdateChannel = orderUpdateChannel;
         _logger = logger;
     }
@@ -139,13 +144,41 @@ public class ExecutionGrpcService : Execution.ExecutionBase
                 return MapOrderResponse(order);
             }
 
-            // Execute order
-            var marketData = new ExecutionService.Models.MarketData
+            // Execute order.
+            //
+            // Look up the latest market bar from the Kafka-fed cache so that the
+            // execution price reference is independent of the strategy's signal-
+            // time price (order.Price). Without this, slippage is computed from
+            // the same number the strategy already saw, and time-delay slippage
+            // becomes structurally impossible to model.
+            //
+            // If no bar is cached yet we reject loudly so the gap is visible;
+            // silently falling back to order.Price would restore the circular
+            // dependency this cache was introduced to break.
+            var marketData = _marketDataCache.GetLatest(order.Symbol);
+            if (marketData == null)
             {
-                Symbol = order.Symbol,
-                Close = order.Price,
-                Timestamp = order.CreatedAt  // Use historical trade time for T+1 validation
-            };
+                order.Status = OrderStatus.Rejected;
+                order.Reason = "No market data in cache for execution price reference";
+                OrdersRejected.WithLabels("NO_MARKET_DATA").Inc();
+                _logger.LogWarning(
+                    "Order rejected — no market data in cache: OrderId={OrderId}, Symbol={Symbol}",
+                    order.OrderId, order.Symbol);
+                return MapOrderResponse(order);
+            }
+
+            // Stop-order trigger check: reject (immediate-or-reject) if the
+            // stop price has not been crossed by the latest market close.
+            if (order.OrderType == OrderType.Stop && !ExecutionHelper.IsStopTriggered(order, marketData))
+            {
+                order.Status = OrderStatus.Rejected;
+                order.Reason = $"Stop not triggered: StopPrice={order.StopPrice}, Close={marketData.Close}";
+                OrdersRejected.WithLabels("STOP_NOT_TRIGGERED").Inc();
+                _logger.LogInformation(
+                    "Stop order not triggered: OrderId={OrderId}, Symbol={Symbol}, StopPrice={Stop}, Close={Close}",
+                    order.OrderId, order.Symbol, order.StopPrice, marketData.Close);
+                return MapOrderResponse(order);
+            }
 
             var result = await _executionAdapter.ExecuteOrderAsync(order, marketData);
             order = result.Order;

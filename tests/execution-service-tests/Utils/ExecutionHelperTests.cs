@@ -569,9 +569,70 @@ public class ExecutionHelperTests
     }
 
     /// <summary>
-    /// maxPartialFills must cap the number of generated fills, even when the
-    /// volume ratio would otherwise produce more splits.
+    /// Unsupported order types (e.g. StopLimit) must throw NotSupportedException
+    /// rather than silently fall back to a no-slippage fill. A silent fallback
+    /// would simulate a free market fill — invisible but incorrect semantics.
     /// </summary>
+    [Fact]
+    public void CalculateExecutionPriceWithSlippage_StopLimitOrder_Throws()
+    {
+        var order = new Order
+        {
+            Symbol = "600000.SH",
+            Side = OrderSide.Buy,
+            OrderType = OrderType.StopLimit,
+            Quantity = 1000,
+            Price = 10m,
+            StopPrice = 10.5m
+        };
+        var md = MakeMarketData(close: 10m);
+
+        Assert.Throws<NotSupportedException>(() =>
+            ExecutionHelper.CalculateExecutionPriceWithSlippage(order, md));
+    }
+
+    // ====================================================================
+    // Stop trigger check (§2.2)
+    // ====================================================================
+
+    /// <summary>Buy stop: triggers when Close &gt;= StopPrice.</summary>
+    [Theory]
+    [InlineData(10.0, 10.0, true)]   // at stop
+    [InlineData(10.5, 10.0, true)]   // above stop
+    [InlineData(9.5,  10.0, false)]  // below stop
+    public void IsStopTriggered_BuyStop(double close, double stop, bool expected)
+    {
+        var order = new Order
+        {
+            Symbol = "600000.SH",
+            Side = OrderSide.Buy,
+            OrderType = OrderType.Stop,
+            StopPrice = (decimal)stop
+        };
+        var md = MakeMarketData(close: (decimal)close);
+
+        Assert.Equal(expected, ExecutionHelper.IsStopTriggered(order, md));
+    }
+
+    /// <summary>Sell stop: triggers when Close &lt;= StopPrice.</summary>
+    [Theory]
+    [InlineData(10.0, 10.0, true)]   // at stop
+    [InlineData(9.5,  10.0, true)]   // below stop
+    [InlineData(10.5, 10.0, false)]  // above stop
+    public void IsStopTriggered_SellStop(double close, double stop, bool expected)
+    {
+        var order = new Order
+        {
+            Symbol = "600000.SH",
+            Side = OrderSide.Sell,
+            OrderType = OrderType.Stop,
+            StopPrice = (decimal)stop
+        };
+        var md = MakeMarketData(close: (decimal)close);
+
+        Assert.Equal(expected, ExecutionHelper.IsStopTriggered(order, md));
+    }
+
     [Fact]
     public void GeneratePartialFills_RespectsMaxPartialFillsCap()
     {

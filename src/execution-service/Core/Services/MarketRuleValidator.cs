@@ -14,15 +14,18 @@ public class MarketRuleValidator : IMarketRuleValidator
 {
     private readonly IPositionRepository _positionRepo;
     private readonly ITradeRepository _tradeRepo;
+    private readonly ISecMasterRepository _secMasterRepo;
     private readonly ILogger<MarketRuleValidator> _logger;
 
     public MarketRuleValidator(
         IPositionRepository positionRepo,
         ITradeRepository tradeRepo,
+        ISecMasterRepository secMasterRepo,
         ILogger<MarketRuleValidator> logger)
     {
         _positionRepo = positionRepo;
         _tradeRepo = tradeRepo;
+        _secMasterRepo = secMasterRepo;
         _logger = logger;
     }
 
@@ -37,8 +40,11 @@ public class MarketRuleValidator : IMarketRuleValidator
                 "Starting market rule validation: SessionId={SessionId}, Symbol={Symbol}, Side={Side}, Quantity={Quantity}, Date={Date}",
                 order.SessionId, order.Symbol, order.Side, order.Quantity, tradeDate);
 
-            // 1. Identify the market type and get the corresponding rule
-            var rule = MarketRuleFactory.GetRule(order.Symbol, _tradeRepo);
+            // 1. Identify the market type and get the corresponding rule.
+            //    Consults market_ref.sec_master first; falls back to the suffix
+            //    heuristic when the symbol has no classification yet.
+            var rule = await MarketRuleFactory.GetRuleAsync(
+                order.Symbol, _tradeRepo, _secMasterRepo, _logger);
 
             // 2. Get the current position
             var position = await _positionRepo.GetPositionAsync(order.SessionId, order.Symbol);

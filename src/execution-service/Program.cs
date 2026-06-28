@@ -3,8 +3,11 @@ using Execution.Service.Services;
 using ExecutionService.Core.Adapters;
 using ExecutionService.Core.Services;
 using ExecutionService.Core.MarketRules;
+using ExecutionService.Core.MarketFeed;
+using ExecutionService.Core.Risk;
 using ExecutionService.Core.Events;
 using ExecutionService.Data;
+using ExecutionService.Data.ClickHouse;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Prometheus;
@@ -20,6 +23,13 @@ builder.Services.AddGrpc();
 
 // Add gRPC reflection service
 builder.Services.AddGrpcReflection();
+
+// Add REST controllers (read-only query API for the dashboard) + Swagger.
+// Mirrors the market-data-replay configuration: controllers are always on,
+// Swagger UI is gated to the Development environment below.
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // Add database
 builder.Services.AddDbContext<ExecutionDbContext>(options =>
@@ -40,6 +50,20 @@ builder.Services.AddScoped<IMarketRuleValidator, MarketRuleValidator>();
 
 // P1.2: OrderUpdate event bus (Singleton — shared across gRPC calls)
 builder.Services.AddSingleton<OrderUpdateChannel>();
+
+// MarketDataCache + Kafka consumer: provide an independent execution-time
+// price reference so that slippage is not circularly derived from order.Price.
+builder.Services.AddSingleton<MarketDataCache>();
+builder.Services.Configure<KafkaConsumerSettings>(
+    builder.Configuration.GetSection(KafkaConsumerSettings.SectionName));
+builder.Services.AddHostedService<KafkaMarketDataConsumer>();
+
+// §4: Price-limit checker (ClickHouse prior-close + sec_master classification).
+// Scoped because it depends on scoped repositories / DbContext.
+builder.Services.Configure<ClickHouseSettings>(
+    builder.Configuration.GetSection(ClickHouseSettings.SectionName));
+builder.Services.AddScoped<IClickHouseClient, ClickHouseClient>();
+builder.Services.AddScoped<PriceLimitChecker>();
 
 // Add ExecutionSettings configuration
 builder.Services.Configure<ExecutionSettings>(
@@ -112,10 +136,15 @@ app.UseMetricServer();
 if (app.Environment.IsDevelopment())
 {
     app.MapGrpcReflectionService();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 // Map gRPC services
 app.MapGrpcService<ExecutionGrpcService>();
+
+// Map REST controllers (query API for dashboard)
+app.MapControllers();
 
 // Health check endpoint
 app.MapGet("/", () => "ExecutionService gRPC Server is running!");

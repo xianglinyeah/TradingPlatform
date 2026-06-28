@@ -1,4 +1,5 @@
 using Execution.Service.Models;
+using ExecutionService.Core.Risk;
 using ExecutionService.Core.Services;
 using Microsoft.Extensions.Options;
 
@@ -31,6 +32,10 @@ public static class ExecutionAdapterFactory
                 riskManager,
                 accountManager,
                 config,
+                // §4: price-limit (涨跌停) rejection. Resolved from the DI
+                // container so the adapter does not need a hard dependency
+                // wired through every test mock.
+                serviceProvider.GetService<PriceLimitChecker>(),
                 loggerFactory.CreateLogger<SimExecutionAdapter>()),
             "PAPER_BROKER" => new PaperExecutionAdapter(
                 loggerFactory.CreateLogger<PaperExecutionAdapter>(),

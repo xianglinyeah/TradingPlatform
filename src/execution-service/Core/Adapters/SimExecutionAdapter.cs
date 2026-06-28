@@ -1,6 +1,7 @@
 using ExecutionService.Models;
 using ExecutionService.Core.Services;
 using ExecutionService.Core.Adapters;
+using ExecutionService.Core.Risk;
 using ExecutionService.Core.Utils;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +15,7 @@ public class SimExecutionAdapter : ExecutionAdapterBase
     private readonly IRiskManager _riskManager;
     private readonly IAccountManager _accountManager;
     private readonly ExecutionSettings _settings;
+    private readonly PriceLimitChecker? _priceLimitChecker;
     private readonly ILogger<SimExecutionAdapter> _logger;
 
     public SimExecutionAdapter(
@@ -21,11 +23,13 @@ public class SimExecutionAdapter : ExecutionAdapterBase
         IRiskManager riskManager,
         IAccountManager accountManager,
         IOptions<ExecutionSettings> settings,
+        PriceLimitChecker? priceLimitChecker,
         ILogger<SimExecutionAdapter> logger)
     {
         _riskManager = riskManager;
         _accountManager = accountManager;
         _settings = settings.Value;
+        _priceLimitChecker = priceLimitChecker;
         _logger = logger;
     }
 
@@ -37,6 +41,24 @@ public class SimExecutionAdapter : ExecutionAdapterBase
                 order.Side, order.Quantity, order.Symbol, order.Price, order.TimeInForce);
 
             order.ExecutionMode = ExecutionMode.SIMULATION;
+
+            // §4: Reject if the order sits on the wrong side of the daily
+            // price-limit band. Real exchanges would never fill these —
+            // filling them silently in backtest produces optimistic PnL.
+            // Skipped silently when the checker or its data is unavailable.
+            if (_priceLimitChecker is not null)
+            {
+                var limitResult = await _priceLimitChecker.CheckAsync(order, marketData);
+                if (!limitResult.Allowed)
+                {
+                    order.Status = OrderStatus.Rejected;
+                    order.Reason = limitResult.Reason ?? "At daily price limit";
+                    _logger.LogInformation(
+                        "[SIM_ADAPTER] Price-limit rejected: {OrderId} {Symbol} {Reason}",
+                        order.OrderId, order.Symbol, order.Reason);
+                    return new ExecutionResult { Order = order, Fills = Array.Empty<Fill>() };
+                }
+            }
 
             // Apply slippage simulation
             decimal executionPrice = ExecutionHelper.CalculateExecutionPriceWithSlippage(

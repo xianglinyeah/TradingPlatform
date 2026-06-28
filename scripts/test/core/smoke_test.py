@@ -42,30 +42,64 @@ def run_smoke_test():
         result = helper.get_database_results(session_id)
 
         # --- Assertions (smoke-level sanity checks) ---
+        #
+        # PnL is no longer a fixed baseline: §1 MarketDataCache makes the
+        # execution price depend on which bar the execution-service Kafka
+        # consumer has cached when the gRPC order arrives. At 10000x replay
+        # the consumer can race ahead of strategy-engine by 1+ bars, so PnL
+        # floats in roughly [-26, -17] across runs.
+        #
+        # Strategy: structural fields (trade count, sides, round trip,
+        # commission) are deterministic and asserted strictly. PnL is
+        # asserted as a range loose enough to absorb the cache race but
+        # tight enough to catch real bugs (e.g. slippage disabled,
+        # commission skipped, wrong-side fills).
 
-        # Pipeline must produce at least 1 trade
         total = result["total_trades"]
+        buys = result.get("buy_trades", 0)
+        sells = result.get("sell_trades", 0)
+        final_position = result.get("final_position", 0)
+        commission = result.get("total_commission", 0.0)
+        pnl = result.get("pnl", 0.0)
+
+        # Structural (deterministic) assertions.
         if total == 0:
             print("[FAIL] No trades in database — pipeline produced no output")
             return False
-
-        # Strategy should generate both buys and sells
-        buys = result.get("buy_trades", 0)
-        sells = result.get("sell_trades", 0)
-        if buys == 0:
-            print("[FAIL] No buy trades — strategy may not be generating signals")
+        if total != 4:
+            print(f"[FAIL] Expected 4 trades, got {total} — strategy signal pattern changed")
+            return False
+        if buys != 2 or sells != 2:
+            print(f"[FAIL] Expected 2 buys + 2 sells, got buys={buys} sells={sells}")
+            return False
+        if final_position != 0:
+            print(f"[FAIL] Expected flat final position (round trip), got {final_position}")
+            return False
+        # Commission: 4 trades × min 5 yuan = 20. Strict window to catch
+        # rate / min-cap regressions; allows small rounding.
+        if not (19.0 <= commission <= 22.0):
+            print(f"[FAIL] Total commission {commission:.2f} outside expected [19, 22] "
+                  "— commission rate or min-cap may be wrong")
             return False
 
-        # Prices should be positive
+        # Numerical (range) assertions.
         if result.get("avg_buy_price", 0) <= 0:
             print("[FAIL] Abnormal buy price — data may be corrupted")
             return False
+        # Observed PnL across multiple runs: -17.88, -22.88, -25.88. Window
+        # [-30, -10] absorbs cache-race variance but catches slippage /
+        # commission skips / wrong-side fills (each shifts PnL by >10).
+        if not (-30.0 <= pnl <= -10.0):
+            print(f"[FAIL] PnL {pnl:.2f} outside expected [-30, -10] "
+                  "— slippage model or fill direction may be wrong")
+            return False
 
-        pnl = result.get("pnl", 0.0)
         print(f"[PASS] Smoke test passed!")
-        print(f"  - Trades:  {total} (buys={buys}, sells={sells})")
-        print(f"  - PnL:     {pnl:.2f}")
-        print(f"  - Buy px:  {result.get('avg_buy_price', 0):.2f}")
+        print(f"  - Trades:      {total} (buys={buys}, sells={sells})")
+        print(f"  - Final pos:   {final_position}")
+        print(f"  - Commission:  {commission:.2f}")
+        print(f"  - PnL:         {pnl:.2f}  (range [-30, -10])")
+        print(f"  - Buy px:      {result.get('avg_buy_price', 0):.2f}")
         return True
 
     except Exception as e:
