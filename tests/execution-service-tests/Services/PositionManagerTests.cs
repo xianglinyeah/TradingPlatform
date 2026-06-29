@@ -2,9 +2,7 @@ using Moq;
 using Microsoft.Extensions.Logging;
 using ExecutionService.Models;
 using ExecutionService.Core.Services;
-using ExecutionService.Core.Services;
 using ExecutionService.Core.Events;
-using ExecutionService.Models;
 using ExecutionService.Data.IRepositories;
 using Xunit;
 

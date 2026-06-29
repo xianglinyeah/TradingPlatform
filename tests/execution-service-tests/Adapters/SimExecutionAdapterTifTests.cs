@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using ExecutionService.Models;
 using ExecutionService.Core.Adapters;
 using ExecutionService.Core.Services;
-using ExecutionService.Models;
 using Xunit;
 
 namespace ExecutionService.Tests.Adapters;

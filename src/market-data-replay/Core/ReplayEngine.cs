@@ -110,6 +110,11 @@ public class ReplayEngine : IReplayEngine
                     if (processedGroups % ReplayConstants.STATUS_CHECK_INTERVAL == 0)
                     {
                         var freshSession = await _sessionRepo.GetSessionAsync(sessionId);
+                        if (freshSession is null)
+                        {
+                            _logger.LogWarning("Session {SessionId} disappeared during replay; aborting", sessionId);
+                            break;
+                        }
 
                         if (freshSession.Status == ReplayStatus.Paused)
                         {
@@ -119,6 +124,13 @@ public class ReplayEngine : IReplayEngine
                             {
                                 await Task.Delay(ReplayConstants.PAUSE_LOOP_CHECK_INTERVAL_MS, cancellationToken);
                                 freshSession = await _sessionRepo.GetSessionAsync(sessionId);
+                                if (freshSession is null) break;
+                            }
+
+                            if (freshSession is null)
+                            {
+                                _logger.LogWarning("Session {SessionId} disappeared while paused; aborting", sessionId);
+                                break;
                             }
 
                             // Update local session object

@@ -146,7 +146,7 @@ public class PartialFillTests
             largeOrderVolumeRatio: Threshold);
 
         Assert.NotNull(fills);
-        Assert.Equal(1, fills.Count);
+        Assert.Single(fills);
         Assert.Equal(50_000, fills[0].Quantity);
     }
 

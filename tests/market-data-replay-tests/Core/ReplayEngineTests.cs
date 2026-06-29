@@ -109,7 +109,7 @@ public class ReplayEngineTests
 
         // Assert
         result.Should().NotBeNull();
-        result.Status.Should().Be(ReplayStatus.Running);
-        result.Symbols.Should().Contain("600000.SH");
+        result!.Status.Should().Be(ReplayStatus.Running);
+        result!.Symbols.Should().Contain("600000.SH");
     }
 }
