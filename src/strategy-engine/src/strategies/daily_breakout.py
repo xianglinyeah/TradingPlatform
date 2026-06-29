@@ -190,8 +190,14 @@ class DailyBreakoutStrategy:
     # Day switch (call before market open each day to clear ordered symbols)
     # ------------------------------------------------------------------
 
-    def on_new_day(self) -> None:
-        """Clear the ordered-today tracker (call before market open each day)."""
+    def on_new_day(self, trade_date=None) -> None:
+        """Clear the ordered-today tracker (call before market open each day).
+
+        The `trade_date` argument is accepted (and ignored) for protocol
+        compatibility with BaseStrategy.on_new_day, so the engine can call
+        every strategy uniformly regardless of whether it actually needs
+        the date.
+        """
         self._ordered_today.clear()
 
 

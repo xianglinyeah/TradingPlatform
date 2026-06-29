@@ -103,6 +103,24 @@ class BaseStrategy(ABC):
         # Update position for the symbol
         self.positions[position.symbol] = position
 
+    def on_new_day(self, trade_date) -> None:
+        """Called when a new trading day begins.
+
+        Triggered by the engine after receiving a DAY_BOUNDARY control
+        message on the market-data topic (replay) or by an APScheduler
+        job before market open (live). Subclasses that keep per-day state
+        — e.g. the "ordered today" tracker in DailyBreakoutStrategy —
+        override this to clear it. The default is a no-op so strategies
+        that do not care about day boundaries are not affected.
+
+        Args:
+            trade_date: The new trade date. Either a datetime.date or an
+                ISO-8601 'yyyy-MM-dd' string (defensive; the replay
+                publisher emits a string but live triggers may pass a
+                date object).
+        """
+        pass
+
     def get_pending_signals(self) -> List[Signal]:
         """Get pending signals and clear the list"""
         signals = self.signals.copy()

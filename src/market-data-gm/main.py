@@ -150,10 +150,22 @@ def main(argv=None) -> int:
 
     set_token(cfg.gm.token)
     if cfg.gm.address:
+        # set_serv_addr is the entry point to the GM terminal. If it fails
+        # (wrong host/port, terminal not running, firewall), every subsequent
+        # run() / on_bar() call will fail with a misleading downstream error
+        # (timeouts, "no data", SDK internal errors). Fail fast at startup so
+        # the failure mode is obvious and k8s restarts the pod with a clear
+        # signal instead of dragging the bad state into the event loop.
         try:
             set_serv_addr(cfg.gm.address)
         except Exception as ex:
-            log.warning("set_serv_addr failed (using default): %s", ex)
+            log.error(
+                "set_serv_addr failed for address=%s: %s. "
+                "Aborting — check GM_SERV_ADDR / gm.address and that the "
+                "Futu/GM terminal on the host is actually running.",
+                cfg.gm.address, ex,
+            )
+            return 1
 
     log.info("Starting to receive real-time bar data (pushed every minute)...")
     try:

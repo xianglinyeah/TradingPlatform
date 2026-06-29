@@ -36,8 +36,13 @@ public static class ReplayConstants
     /// <summary>Market data topic name</summary>
     public const string MARKET_DATA_TOPIC = "market.data";
 
-    /// <summary>RESET message type</summary>
+    /// <summary>RESET message type (emitted once at session start)</summary>
     public const string MESSAGE_TYPE_RESET = "RESET";
+
+    /// <summary>DAY_BOUNDARY message type (emitted before the first bar of each
+    /// new trading day so consumers can run per-day lifecycle hooks such as
+    /// clearing daily state without waiting for the next RESET).</summary>
+    public const string MESSAGE_TYPE_DAY_BOUNDARY = "DAY_BOUNDARY";
 
     // ===== Data source identifiers =====
 

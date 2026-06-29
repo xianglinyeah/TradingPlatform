@@ -83,10 +83,20 @@ def main(argv=None) -> int:
 
     set_token(cfg.gm.token)
     if cfg.gm.address:
+        # Same rationale as market-data-gm/main.py: a failed set_serv_addr
+        # would let the gRPC server come up healthy and only blow up later
+        # when the first SubmitOrder lands on the GM thread. K8s readiness
+        # would never catch the broken state. Fail fast instead.
         try:
             set_serv_addr(cfg.gm.address)
         except Exception as ex:
-            log.warning("set_serv_addr failed (using default): %s", ex)
+            log.error(
+                "set_serv_addr failed for address=%s: %s. "
+                "Aborting — check GM_SERV_ADDR / gm.address and that the "
+                "GM terminal on the host is actually running.",
+                cfg.gm.address, ex,
+            )
+            return 1
 
     gm_strategy.prepare(
         account=cfg.gm.paper_account_id or cfg.gm.live_account_id,

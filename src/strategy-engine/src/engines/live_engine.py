@@ -184,6 +184,41 @@ class LiveEngine(BaseEngine):
         for strategy in self.strategies:
             strategy.reset()
 
+    def on_day_boundary(self, trade_date) -> None:
+        """Invoke the per-day lifecycle hook on every loaded strategy.
+
+        Called from `parse_kafka_message` when a DAY_BOUNDARY control message
+        arrives on the market-data topic. The replay publisher emits one
+        before the first bar of each new trade date; without it, strategies
+        that hold per-day state (e.g. DailyBreakoutStrategy's "ordered today"
+        tracker) leak the previous day's state forward and the duplicate-order
+        guard silently misbehaves.
+
+        Also runs against per-run (hot-loaded) strategy instances, so a
+        registered run that depends on day boundaries still works.
+        """
+        # Defensive: support both date objects and ISO strings; the replay
+        # publisher emits 'yyyy-MM-dd' but APScheduler live triggers may pass
+        # a real date.
+        logger.info("DAY_BOUNDARY received, trade_date=%s", trade_date)
+
+        for strategy in self.strategies:
+            try:
+                strategy.on_new_day(trade_date)
+            except Exception as ex:
+                logger.error(
+                    "on_new_day failed for strategy %s: %s", strategy.name, ex
+                )
+
+        if self.run_registry is not None:
+            for ctx in self.run_registry.list_runs():
+                try:
+                    ctx.strategy_instance.on_new_day(trade_date)
+                except Exception as ex:
+                    logger.error(
+                        "on_new_day failed for run %s: %s", ctx.run_id, ex
+                    )
+
     def parse_kafka_message(self, message: bytes) -> BarData:
         """
         Parse Kafka message into BarData
@@ -210,6 +245,14 @@ class LiveEngine(BaseEngine):
                     logger.info(f"Session ID updated from RESET message: {new_session_id}")
                 # Strategies are reset in update_session_id
                 return None  # Return None for control messages, not processed as bar data
+
+            if isinstance(data, dict) and data.get('type') == 'DAY_BOUNDARY':
+                # Emitted by market-data-replay before the first bar of each
+                # new trade date. Hand off to the day-boundary hook (which
+                # invokes strategy.on_new_day) and return None so the outer
+                # loop treats this as a non-bar control message.
+                self.on_day_boundary(data.get('trade_date'))
+                return None
 
             # Handle different possible field names
             symbol = data.get('symbol') or data.get('ts_code') or data.get('Symbol')

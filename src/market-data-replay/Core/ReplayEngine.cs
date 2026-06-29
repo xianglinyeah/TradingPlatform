@@ -100,12 +100,33 @@ public class ReplayEngine : IReplayEngine
             long processedGroups = 0;
             var speedCalculator = new SpeedCalculator(config.SpeedFactor);
 
+            // Tracks the trade date of the most recently published bar group.
+            // When the date advances (or on the very first group), we emit a
+            // DAY_BOUNDARY control message onto the market-data topic BEFORE
+            // the bars for the new day. Strategy-engine uses this to invoke
+            // per-day lifecycle hooks (e.g. clear the daily "ordered today"
+            // tracker in DailyBreakoutStrategy) — without it, daily state from
+            // the previous trade date leaks forward and the duplicate-order
+            // guard silently misbehaves.
+            DateTime? lastTradeDate = null;
+
             foreach (var timeGroup in groupedEvents)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
+                    // Day-boundary detection. We compare dates (not full
+                    // timestamps) because bars within the same trading day
+                    // share a date even though their EventTime differs.
+                    var currentDate = timeGroup.Key.Date;
+                    if (lastTradeDate is null || currentDate != lastTradeDate)
+                    {
+                        await _publisher.PublishDayBoundaryAsync(
+                            ReplayConstants.MARKET_DATA_TOPIC, sessionId, currentDate);
+                        lastTradeDate = currentDate;
+                    }
+
                     // Periodically check status to avoid frequent database queries
                     if (processedGroups % ReplayConstants.STATUS_CHECK_INTERVAL == 0)
                     {
