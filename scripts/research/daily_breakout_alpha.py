@@ -1,24 +1,38 @@
-"""Volume-breakout alpha validation.
+"""Daily-breakout alpha validation (with volume + turnover confirmation).
 
-Hypothesis: a stock that simultaneously shows (a) volume surging above its
-recent average and (b) turnover rate above its recent average tends to
-outperform the next day. This script tests that hypothesis vectorially across
-the whole A-share universe stored in ClickHouse, using turnover-rate data
-joined from PostgreSQL ``fundamentals.daily_basic``.
+Hypothesis: a stock that simultaneously satisfies
+  (a) the daily-breakout regime filter from ``DailyBreakoutStrategy``:
+      past 60-day decline >= 20% AND recent 20-day range < 8% (a bottom
+      consolidation box), with today's close breaking above the 20-day
+      high (box upper edge) computed from data through yesterday, AND
+  (b) volume surge  > vol_ma20  * vol_mult,  AND
+  (c) turnover surge > turn_ma20 * turn_mult
+tends to outperform the next day.
+
+This script tests that hypothesis vectorially across the whole A-share
+universe stored in ClickHouse, using turnover-rate data joined from
+PostgreSQL ``fundamentals.daily_basic``.
+
+Parameter sweep is over (vol_mult, turn_mult). Daily-breakout params are
+fixed (same defaults as ``BreakoutParams`` in the production strategy) but
+exposed as module constants so they can be tuned without editing logic.
 
 Output:
-  - Stdout table of mean next-day return for each parameter combination, with
-    a paired t-stat against the unconditional same-window mean.
-  - ``volume_breakout_alpha_results.csv`` with one row per parameter combo.
+  - Stdout table of mean next-day return for each parameter combination,
+    with a one-sample t-stat against the unconditional same-panel mean.
+  - ``daily_breakout_alpha_results.csv`` with one row per parameter combo.
 
 Design notes:
-  - All rolling baselines use ``.shift(1)`` so the signal at day *t* only sees
-    information up to day *t-1*. No future-leak.
-  - The signal is computed once per (vol_mult, turn_mult) combo on the same
-    joined panel; the parameter sweep is just a filter pass over that panel.
-  - ClickHouse stores symbols in TS format (``600000.SH``). PostgreSQL
-    ``fundamentals.daily_basic.symbol`` may be either TS or GM format; we
-    normalize defensively on load (see ``_normalize_to_ts``).
+  - All rolling baselines use ``.shift(1)`` so the signal at day *t* only
+    sees information up to day *t-1*. No future-leak. This includes the
+    20-day high/low used as the breakout level (matching the production
+    strategy, which uses ``daily.iloc[-20:]`` through yesterday).
+  - The daily-breakout mask is computed once on the joined panel; the
+    parameter sweep is just a filter pass over that mask AND-ed with the
+    (vol_mult, turn_mult) volume/turnover conditions.
+  - ``min_daily_bars = 65`` from the production strategy is enforced
+    implicitly: rolling(60).shift(1) produces NaN for the first ~60 rows
+    per symbol and those rows are dropped.
 """
 from __future__ import annotations
 
@@ -37,16 +51,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OUTPUT_CSV = "volume_breakout_alpha_results.csv"
+OUTPUT_CSV = "daily_breakout_alpha_results.csv"
 
-# Parameter grid per the spec.
+# ---------------------------------------------------------------------------
+# Parameter grid (sweep) and daily-breakout fixed params
+# ---------------------------------------------------------------------------
+
 VOL_MULTS = (1.2, 1.5, 2.0, 3.0)
 TURN_MULTS = (1.5, 2.0, 3.0)
-ROLL_WINDOW = 20  # trading days for the rolling mean baselines
+
+ROLL_WINDOW = 20  # rolling window for vol/turn baselines AND box edges
+
+# Daily-breakout regime params (mirror BreakoutParams defaults in production)
+DOWNTREND_DAYS = 60    # lookback for the downtrend check
+DOWNTREND_PCT  = 0.20  # decline threshold
+CONSOL_RANGE   = 0.08  # max 20-day range to qualify as a box
 
 
 # ---------------------------------------------------------------------------
-# Symbol format normalization
+# Symbol format normalization (same logic as volume_breakout_alpha)
 # ---------------------------------------------------------------------------
 
 _GM_TO_TS = {"SHSE": "SH", "SZSE": "SZ"}
@@ -56,10 +79,8 @@ _TS_TO_TS = {"SH": "SH", "SZ": "SZ"}
 def _normalize_to_ts(symbols: Iterable[str]) -> list[str]:
     """Coerce a list of symbols to TS format (``600000.SH``).
 
-    Tolerates three inputs observed in the platform:
-      - TS format already:  ``600000.SH``
-      - GM format:          ``SHSE.600000``
-      - Bare code:          ``600000`` (left alone; will not join)
+    Tolerates TS format (``600000.SH``), GM format (``SHSE.600000``),
+    and bare codes (``600000`` — left alone, will not join).
     """
     out = []
     for s in symbols:
@@ -125,13 +146,25 @@ def load_turnover() -> pd.DataFrame:
     return df[["ts_code", "trade_date", "turnrate"]]
 
 
-def build_panel(daily: pd.DataFrame, turnover: pd.DataFrame) -> pd.DataFrame:
-    """Join daily bars with turnover, then compute baselines and forward return.
+# ---------------------------------------------------------------------------
+# Panel construction
+# ---------------------------------------------------------------------------
 
-    The panel is indexed by (ts_code, trade_date). Baselines are computed
-    per-symbol with a trailing window and shifted by one bar so day *t*'s
-    signal uses only data up to *t-1*. ``forward_return`` is the close-to-close
-    return from *t* to *t+1* — what the alpha is trying to predict.
+def build_panel(daily: pd.DataFrame, turnover: pd.DataFrame) -> pd.DataFrame:
+    """Join daily bars with turnover, then compute:
+      - forward_return (close-to-close t -> t+1, the prediction target)
+      - vol_ma20, turn_ma20: trailing 20-day means (excluding today)
+      - box_high, box_low:   trailing 20-day high/low (excluding today),
+                             the breakout / support levels
+      - downtrend_ok:        past 60-day decline >= DOWNTREND_PCT
+      - consol_ok:           trailing 20-day range < CONSOL_RANGE
+      - breakout_ok:         close > box_high AND close > box_low
+                             (the second clause guards against false breakouts
+                             where price gaps below support same day)
+
+    The daily-breakout mask is ``downtrend_ok & consol_ok & breakout_ok``.
+
+    The panel is indexed by (ts_code, trade_date).
     """
     daily = daily.copy()
     daily["trade_date"] = pd.to_datetime(daily["trade_time"]).dt.normalize()
@@ -141,14 +174,14 @@ def build_panel(daily: pd.DataFrame, turnover: pd.DataFrame) -> pd.DataFrame:
         ["ts_code", "trade_date"]
     )
 
-    # Forward return: close[t+1] / close[t] - 1. Computed per symbol.
+    grp = panel.groupby(level="ts_code")
+
+    # Forward return: close[t+1] / close[t] - 1, per symbol.
     panel["forward_return"] = (
-        panel.groupby(level="ts_code")["close"].shift(-1)
-        / panel["close"] - 1.0
+        grp["close"].shift(-1) / panel["close"] - 1.0
     )
 
-    # Trailing baselines (exclude today via shift(1)) to avoid look-ahead.
-    grp = panel.groupby(level="ts_code")
+    # Trailing 20-day baselines EXCLUDING today (shift(1) avoids look-ahead).
     panel["vol_ma20"] = grp["volume"].transform(
         lambda s: s.rolling(ROLL_WINDOW).mean().shift(1)
     )
@@ -156,11 +189,58 @@ def build_panel(daily: pd.DataFrame, turnover: pd.DataFrame) -> pd.DataFrame:
         lambda s: s.rolling(ROLL_WINDOW).mean().shift(1)
     )
 
-    # Drop rows where the signal cannot be evaluated (warmup + last bar).
+    # Box edges = trailing 20-day high/low through yesterday.
+    panel["box_high"] = grp["high"].transform(
+        lambda s: s.rolling(ROLL_WINDOW).max().shift(1)
+    )
+    panel["box_low"] = grp["low"].transform(
+        lambda s: s.rolling(ROLL_WINDOW).min().shift(1)
+    )
+
+    # Downtrend check: close 60 days ago vs close yesterday (both exclude t).
+    # Matches production: start_close / end_close - 1 >= DOWNTREND_PCT,
+    # where start = past_60.iloc[0] and end = past_60.iloc[-1].
+    panel["close_60_ago"] = grp["close"].transform(
+        lambda s: s.shift(DOWNTREND_DAYS)
+    )
+    panel["close_yesterday"] = grp["close"].transform(lambda s: s.shift(1))
+    decline = (
+        panel["close_60_ago"] / panel["close_yesterday"] - 1.0
+    )
+    panel["downtrend_ok"] = decline >= DOWNTREND_PCT
+
+    # Consolidation box: (high_20 - low_20) / low_20 < CONSOL_RANGE.
+    consol_range = (panel["box_high"] - panel["box_low"]) / panel["box_low"]
+    panel["consol_ok"] = consol_range < CONSOL_RANGE
+
+    # Breakout event on day t: today's close breaks box_high (and stays
+    # above box_low — redundant when the first holds, but kept for parity
+    # with the production strategy's false-breakout guard).
+    panel["breakout_ok"] = (
+        (panel["close"] > panel["box_high"])
+        & (panel["close"] > panel["box_low"])
+    )
+
+    # Drop rows where any required input is missing (warmup, last bar,
+    # or missing turnover).
     before = len(panel)
-    panel = panel.dropna(subset=["vol_ma20", "turn_ma20", "forward_return"])
+    panel = panel.dropna(
+        subset=["vol_ma20", "turn_ma20", "box_high", "box_low",
+                "close_60_ago", "close_yesterday", "forward_return"]
+    )
     logger.info("Panel built: %d usable rows (dropped %d for warmup/NaN)",
                 len(panel), before - len(panel))
+
+    # Pre-compute the daily-breakout mask once. The sweep below only ANDs
+    # this with volume/turnover conditions, so it pays to compute it once.
+    panel["daily_breakout"] = (
+        panel["downtrend_ok"] & panel["consol_ok"] & panel["breakout_ok"]
+    )
+
+    n_breakout = int(panel["daily_breakout"].sum())
+    logger.info("Daily-breakout candidates (no vol/turn filter): "
+                "%d rows (%.4f%% of panel)",
+                n_breakout, 100.0 * n_breakout / max(len(panel), 1))
     return panel
 
 
@@ -169,14 +249,19 @@ def build_panel(daily: pd.DataFrame, turnover: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def evaluate_combo(panel: pd.DataFrame, vol_mult: float, turn_mult: float) -> dict:
-    """Evaluate one (vol_mult, turn_mult) parameter combo on the panel.
+    """Evaluate one (vol_mult, turn_mult) combo.
 
-    Returns a dict with the combo, hit count, mean forward return for hits,
-    the unconditional mean in the same panel, and a paired t-stat / p-value.
+    Signal = daily_breakout AND volume > vol_ma20*vol_mult AND
+             turnrate > turn_ma20*turn_mult.
+
+    Returns dict with hit count, mean forward return for hits, the
+    unconditional panel mean, and a one-sample t-stat / p-value testing
+    whether the signal-day forward returns differ from the unconditional
+    mean.
     """
-    vol_hit = panel["volume"] > panel["vol_ma20"] * vol_mult
+    vol_hit  = panel["volume"]   > panel["vol_ma20"]  * vol_mult
     turn_hit = panel["turnrate"] > panel["turn_ma20"] * turn_mult
-    signal = vol_hit & turn_hit
+    signal = panel["daily_breakout"] & vol_hit & turn_hit
 
     n_hits = int(signal.sum())
     result = {
@@ -188,8 +273,6 @@ def evaluate_combo(panel: pd.DataFrame, vol_mult: float, turn_mult: float) -> di
     }
 
     if n_hits < 30:
-        # Too few hits to make any statistical claim. Still record the means
-        # so the sweep table shows the trajectory.
         result.update({
             "mean_ret_signal": float(panel.loc[signal, "forward_return"].mean())
                                 if n_hits else float("nan"),
@@ -203,9 +286,6 @@ def evaluate_combo(panel: pd.DataFrame, vol_mult: float, turn_mult: float) -> di
     baseline = panel["forward_return"].mean()
     result["mean_ret_signal"] = float(signal_returns.mean())
     result["mean_ret_uncond"] = float(baseline)
-    # One-sample t-test: is the mean of the signal-day population different
-    # from the unconditional mean? This is conservative vs. a paired test on
-    # overlapping windows but is appropriate when hits are sparse.
     t_stat, p_value = stats.ttest_1samp(signal_returns, popmean=baseline)
     result["t_stat"] = float(t_stat)
     result["p_value"] = float(p_value)
@@ -220,7 +300,7 @@ def run_sweep(panel: pd.DataFrame) -> pd.DataFrame:
             row = evaluate_combo(panel, vol_mult, turn_mult)
             rows.append(row)
             logger.info(
-                "vol_mult=%4.1f turn_mult=%4.1f -> hits=%6d (%5.2f%%) "
+                "vol_mult=%4.1f turn_mult=%4.1f -> hits=%6d (%5.4f%%) "
                 "mean_ret=%+.4f%% uncond=%+.4f%% t=%+.2f p=%.3f",
                 vol_mult, turn_mult, row["n_hits"],
                 100.0 * row["hit_rate"],
@@ -249,14 +329,13 @@ def main() -> None:
 
     results = run_sweep(panel)
 
-    # Pretty-print the full sweep table to stdout.
     with pd.option_context("display.max_rows", None,
                            "display.width", 200,
                            "display.float_format", lambda v: f"{v:.4f}"):
-        print("\n=== Volume-breakout alpha sweep ===")
+        print("\n=== Daily-breakout alpha sweep (vol + turn confirmation) ===")
         print(results.to_string(index=False))
 
-    #results.to_csv(OUTPUT_CSV, index=False)
+    # results.to_csv(OUTPUT_CSV, index=False)
     logger.info("Wrote results to %s", OUTPUT_CSV)
 
 
