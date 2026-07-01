@@ -89,7 +89,7 @@ spec:
           containers:
           - name: data-ingestion
             image: docker-data-ingestion:latest
-            imagePullPolicy: Always
+            imagePullPolicy: IfNotPresent
             command: ["/bin/bash", "-c"]
             resources:
               requests:
