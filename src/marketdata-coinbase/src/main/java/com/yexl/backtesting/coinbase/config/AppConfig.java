@@ -58,6 +58,11 @@ public final class AppConfig {
     public final String proxyHost;
     public final int proxyPort;
 
+    public final long latencyLogIntervalMs;
+
+    public final boolean recordingEnabled;
+    public final String recordingDir;
+
     private AppConfig(Properties p) {
         this.wsUrl = require(p, "coinbase.ws.url");
         this.productIds = Arrays.stream(require(p, "coinbase.product.ids").split(","))
@@ -117,6 +122,11 @@ public final class AppConfig {
             throw new IllegalArgumentException(
                     "coinbase.proxy.type must be socks5 or http, got " + proxyType);
         }
+
+        this.latencyLogIntervalMs = parseLong(p, "metrics.latency-log-interval-ms", 10_000L);
+
+        this.recordingEnabled = Boolean.parseBoolean(p.getProperty("recording.enabled", "false").trim());
+        this.recordingDir = p.getProperty("recording.dir", "recordings").trim();
     }
 
     public static AppConfig load() {

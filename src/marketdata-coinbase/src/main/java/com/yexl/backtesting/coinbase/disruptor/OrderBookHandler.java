@@ -1,6 +1,7 @@
 package com.yexl.backtesting.coinbase.disruptor;
 
 import com.lmax.disruptor.EventHandler;
+import com.yexl.backtesting.coinbase.metrics.LatencyTracker;
 import com.yexl.backtesting.coinbase.model.BookState;
 import com.yexl.backtesting.coinbase.model.BookUpdate;
 import com.yexl.backtesting.coinbase.model.EventMessageType;
@@ -37,21 +38,30 @@ public final class OrderBookHandler implements EventHandler<MarketDataEvent> {
 
     private final OrderBookManager manager;
     private final RecoveryManager recoveryManager;
+    private final LatencyTracker latencyTracker;
 
     // Reused scratch structures. OrderBookHandler is single-threaded (Disruptor
     // guarantees it), so these don't need synchronization.
     private final Map<String, List<BookUpdate>> snapshotBatches = new HashMap<>();
     private final List<BookUpdate> incrementalList = new ArrayList<>();
 
-    public OrderBookHandler(OrderBookManager manager, RecoveryManager recoveryManager) {
+    public OrderBookHandler(OrderBookManager manager, RecoveryManager recoveryManager,
+                            LatencyTracker latencyTracker) {
         this.manager = manager;
         this.recoveryManager = recoveryManager;
+        this.latencyTracker = latencyTracker;
     }
 
     @Override
     public void onEvent(MarketDataEvent event, long sequence, boolean endOfBatch) {
         switch (event.messageType) {
-            case SNAPSHOT, UPDATE -> handleBookChanges(event);
+            case SNAPSHOT, UPDATE -> {
+                handleBookChanges(event);
+                // Latency is recorded for L2 events only — heartbeats and
+                // subscription acks would dilute the distribution.
+                event.bookAppliedNanos = System.nanoTime();
+                latencyTracker.record(event);
+            }
             case HEARTBEAT -> {
                 recoveryManager.onHeartbeat();
                 if (log.isTraceEnabled()) {

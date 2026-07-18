@@ -29,11 +29,33 @@ public final class MarketDataEvent {
     /** Top-level {@code sequence_num} from the Coinbase frame. */
     public long sequenceNum;
 
+    // ---- Latency instrumentation timestamps ----
+    //
+    // Two distinct time domains — do not mix them in arithmetic:
+    //  * "epoch" fields are wall-clock UNIX epoch nanos. Comparable to the
+    //    exchange's own timestamps, but subject to NTP adjustment and
+    //    cross-host clock skew.
+    //  * "nanos" fields are System.nanoTime() — monotonic, arbitrary origin,
+    //    only meaningful as differences within this process.
+
     /** {@link System#nanoTime()} at the moment Thread 1 received the frame. */
     public long receiveTimeNanos;
 
-    /** Top-level {@code timestamp} (ISO-8601 string) from the Coinbase frame. */
-    public String exchangeTimestamp;
+    /** Wall-clock epoch nanos captured at the same moment as {@link #receiveTimeNanos}. */
+    public long receiveTimeEpochNanos;
+
+    /**
+     * Top-level {@code timestamp} from the Coinbase frame, parsed to epoch
+     * nanos. 0 if the frame carried none. Epoch domain — compare only with
+     * {@link #receiveTimeEpochNanos}.
+     */
+    public long exchangeTsNanos;
+
+    /** {@link System#nanoTime()} when ParseHandler finished with this event. */
+    public long parsedNanos;
+
+    /** {@link System#nanoTime()} when OrderBookHandler finished applying this event. */
+    public long bookAppliedNanos;
 
     /** Number of valid entries in {@link #updates}. */
     public int updateCount;
@@ -56,7 +78,10 @@ public final class MarketDataEvent {
         channel = ChannelType.UNKNOWN;
         sequenceNum = 0L;
         receiveTimeNanos = 0L;
-        exchangeTimestamp = null;
+        receiveTimeEpochNanos = 0L;
+        exchangeTsNanos = 0L;
+        parsedNanos = 0L;
+        bookAppliedNanos = 0L;
         updateCount = 0;
         heartbeatCounter = 0L;
         // Drop the reference to the previous batch so the array and its slot

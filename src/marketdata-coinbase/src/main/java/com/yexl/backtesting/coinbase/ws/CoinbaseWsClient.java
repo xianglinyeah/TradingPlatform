@@ -5,6 +5,7 @@ import com.lmax.disruptor.RingBuffer;
 import com.yexl.backtesting.coinbase.auth.JwtSigner;
 import com.yexl.backtesting.coinbase.config.AppConfig;
 import com.yexl.backtesting.coinbase.model.MarketDataEvent;
+import com.yexl.backtesting.coinbase.recording.FrameRecorder;
 import com.yexl.backtesting.coinbase.recovery.RecoverableConnection;
 import com.yexl.backtesting.coinbase.recovery.RecoveryManager;
 import io.netty.bootstrap.Bootstrap;
@@ -72,13 +73,20 @@ public final class CoinbaseWsClient implements RecoverableConnection {
             (event, sequence, payload) -> {
                 event.reset();
                 event.rawJson = payload;
+                // Both clock domains stamped back-to-back: nanoTime for
+                // monotonic in-process latency segments, epoch nanos so the
+                // exchange's wall-clock timestamp has something comparable.
                 event.receiveTimeNanos = System.nanoTime();
+                java.time.Instant now = java.time.Instant.now();
+                event.receiveTimeEpochNanos = now.getEpochSecond() * 1_000_000_000L + now.getNano();
             };
 
     private final AppConfig config;
     private final JwtSigner jwtSigner;
     private final RingBuffer<MarketDataEvent> ringBuffer;
     private final RecoveryManager recoveryManager;
+    /** Optional raw-frame recorder; null when recording is disabled. */
+    private final FrameRecorder frameRecorder;
 
     private NioEventLoopGroup group;
     private volatile Channel channel;
@@ -93,11 +101,13 @@ public final class CoinbaseWsClient implements RecoverableConnection {
     private final CountDownLatch stopped = new CountDownLatch(1);
 
     public CoinbaseWsClient(AppConfig config, JwtSigner jwtSigner,
-                            RingBuffer<MarketDataEvent> ringBuffer, RecoveryManager recoveryManager) {
+                            RingBuffer<MarketDataEvent> ringBuffer, RecoveryManager recoveryManager,
+                            FrameRecorder frameRecorder) {
         this.config = config;
         this.jwtSigner = jwtSigner;
         this.ringBuffer = ringBuffer;
         this.recoveryManager = recoveryManager;
+        this.frameRecorder = frameRecorder;
     }
 
     /** Initial connect, called once from {@code Main} at startup. Fails fast on error. */
@@ -168,7 +178,8 @@ public final class CoinbaseWsClient implements RecoverableConnection {
                         }
                         p.addLast(new HttpClientCodec());
                         p.addLast(new HttpObjectAggregator(config.wsMaxFrameBytes));
-                        p.addLast(new WsHandler(handshaker, jwtSigner, config.productIds, ringBuffer, recoveryManager));
+                        p.addLast(new WsHandler(handshaker, jwtSigner, config.productIds, ringBuffer,
+                                recoveryManager, frameRecorder));
                     }
                 });
 
@@ -242,15 +253,17 @@ public final class CoinbaseWsClient implements RecoverableConnection {
         private final List<String> productIds;
         private final RingBuffer<MarketDataEvent> ringBuffer;
         private final RecoveryManager recoveryManager;
+        private final FrameRecorder frameRecorder;
 
         WsHandler(WebSocketClientHandshaker handshaker, JwtSigner jwtSigner,
                   List<String> productIds, RingBuffer<MarketDataEvent> ringBuffer,
-                  RecoveryManager recoveryManager) {
+                  RecoveryManager recoveryManager, FrameRecorder frameRecorder) {
             this.handshaker = handshaker;
             this.jwtSigner = jwtSigner;
             this.productIds = productIds;
             this.ringBuffer = ringBuffer;
             this.recoveryManager = recoveryManager;
+            this.frameRecorder = frameRecorder;
         }
 
         @Override
@@ -272,6 +285,10 @@ public final class CoinbaseWsClient implements RecoverableConnection {
             if (msg instanceof TextWebSocketFrame textFrame) {
                 String payload = textFrame.text();
                 publishToRingBuffer(payload);
+                if (frameRecorder != null) {
+                    // After publish — recording must never delay the hot path.
+                    frameRecorder.offer(payload);
+                }
             } else if (msg instanceof PongWebSocketFrame) {
                 log.trace("Received pong");
             } else if (msg instanceof CloseWebSocketFrame closeFrame) {

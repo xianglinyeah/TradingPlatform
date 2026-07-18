@@ -70,7 +70,7 @@ public final class ParseHandler implements EventHandler<MarketDataEvent> {
             }
 
             JsonNode tsNode = root.get("timestamp");
-            event.exchangeTimestamp = tsNode != null ? tsNode.asText() : null;
+            event.exchangeTsNanos = tsNode != null ? parseIsoToNanos(tsNode.asText()) : 0L;
 
             switch (event.channel) {
                 case L2_DATA -> parseL2(event, root);
@@ -88,6 +88,7 @@ public final class ParseHandler implements EventHandler<MarketDataEvent> {
             event.messageType = EventMessageType.ERROR;
         } finally {
             event.rawJson = null;
+            event.parsedNanos = System.nanoTime();
         }
     }
 

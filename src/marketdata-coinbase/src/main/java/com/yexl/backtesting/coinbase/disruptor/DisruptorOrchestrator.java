@@ -5,6 +5,7 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
 import com.yexl.backtesting.coinbase.config.AppConfig;
+import com.yexl.backtesting.coinbase.metrics.LatencyTracker;
 import com.yexl.backtesting.coinbase.model.MarketDataEvent;
 import com.yexl.backtesting.coinbase.orderbook.OrderBookManager;
 import com.yexl.backtesting.coinbase.recovery.RecoveryManager;
@@ -29,7 +30,8 @@ public final class DisruptorOrchestrator {
 
     private final Disruptor<MarketDataEvent> disruptor;
 
-    public DisruptorOrchestrator(AppConfig config, OrderBookManager manager, RecoveryManager recoveryManager) {
+    public DisruptorOrchestrator(AppConfig config, OrderBookManager manager, RecoveryManager recoveryManager,
+                                 LatencyTracker latencyTracker) {
         this.disruptor = new Disruptor<>(
                 MarketDataEvent.FACTORY,
                 config.ringBufferSize,
@@ -39,7 +41,7 @@ public final class DisruptorOrchestrator {
         );
 
         ParseHandler parseHandler = new ParseHandler(recoveryManager);
-        OrderBookHandler bookHandler = new OrderBookHandler(manager, recoveryManager);
+        OrderBookHandler bookHandler = new OrderBookHandler(manager, recoveryManager, latencyTracker);
 
         disruptor.handleEventsWith(parseHandler).then(bookHandler);
 

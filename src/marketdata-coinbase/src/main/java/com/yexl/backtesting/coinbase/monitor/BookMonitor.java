@@ -1,5 +1,6 @@
 package com.yexl.backtesting.coinbase.monitor;
 
+import com.yexl.backtesting.coinbase.metrics.LatencyTracker;
 import com.yexl.backtesting.coinbase.model.OrderBookSnapshot;
 import com.yexl.backtesting.coinbase.model.PriceLevel;
 import com.yexl.backtesting.coinbase.orderbook.OrderBook;
@@ -32,18 +33,23 @@ public final class BookMonitor implements AutoCloseable {
     private final int depth;
     private final long intervalMs;
     private final RecoveryManager recoveryManager;
+    private final LatencyTracker latencyTracker;
+    private final long latencyLogIntervalMs;
     private final ScheduledExecutorService scheduler;
 
     // Diagnostic counters (logged each cycle).
     private final AtomicLong sanityFailures = new AtomicLong();
 
     public BookMonitor(OrderBookManager manager, List<String> productIds,
-                       int depth, long intervalMs, RecoveryManager recoveryManager) {
+                       int depth, long intervalMs, RecoveryManager recoveryManager,
+                       LatencyTracker latencyTracker, long latencyLogIntervalMs) {
         this.manager = manager;
         this.productIds = productIds;
         this.depth = depth;
         this.intervalMs = intervalMs;
         this.recoveryManager = recoveryManager;
+        this.latencyTracker = latencyTracker;
+        this.latencyLogIntervalMs = latencyLogIntervalMs;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "book-monitor");
             t.setDaemon(true);
@@ -58,8 +64,24 @@ public final class BookMonitor implements AutoCloseable {
                 /* period */ intervalMs,
                 TimeUnit.MILLISECONDS
         );
-        log.info("BookMonitor started (interval={}ms, depth={}, products={})",
-                intervalMs, depth, productIds);
+        scheduler.scheduleAtFixedRate(
+                this::logLatency,
+                /* initialDelay */ latencyLogIntervalMs,
+                /* period */ latencyLogIntervalMs,
+                TimeUnit.MILLISECONDS
+        );
+        log.info("BookMonitor started (interval={}ms, latencyInterval={}ms, depth={}, products={})",
+                intervalMs, latencyLogIntervalMs, depth, productIds);
+    }
+
+    private void logLatency() {
+        try {
+            for (String line : latencyTracker.summaryLines()) {
+                log.info("[latency] {}", line);
+            }
+        } catch (Exception e) {
+            log.error("Latency summary failed", e);
+        }
     }
 
     private void snapshotAll() {

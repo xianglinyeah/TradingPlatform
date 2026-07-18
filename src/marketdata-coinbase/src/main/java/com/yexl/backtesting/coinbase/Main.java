@@ -4,8 +4,10 @@ import com.yexl.backtesting.coinbase.auth.CdpCredentials;
 import com.yexl.backtesting.coinbase.auth.JwtSigner;
 import com.yexl.backtesting.coinbase.config.AppConfig;
 import com.yexl.backtesting.coinbase.disruptor.DisruptorOrchestrator;
+import com.yexl.backtesting.coinbase.metrics.LatencyTracker;
 import com.yexl.backtesting.coinbase.monitor.BookMonitor;
 import com.yexl.backtesting.coinbase.orderbook.OrderBookManager;
+import com.yexl.backtesting.coinbase.recording.FrameRecorder;
 import com.yexl.backtesting.coinbase.recovery.RecoveryManager;
 import com.yexl.backtesting.coinbase.ws.CoinbaseWsClient;
 import org.slf4j.Logger;
@@ -36,15 +38,22 @@ public final class Main {
 
             RecoveryManager recoveryManager = new RecoveryManager(config, bookManager);
 
-            DisruptorOrchestrator disruptor = new DisruptorOrchestrator(config, bookManager, recoveryManager);
+            LatencyTracker latencyTracker = new LatencyTracker();
+
+            DisruptorOrchestrator disruptor = new DisruptorOrchestrator(
+                    config, bookManager, recoveryManager, latencyTracker);
             disruptor.start();
 
             BookMonitor monitor = new BookMonitor(
                     bookManager, config.productIds, config.snapshotLogDepth, config.snapshotLogIntervalMs,
-                    recoveryManager);
+                    recoveryManager, latencyTracker, config.latencyLogIntervalMs);
+
+            FrameRecorder frameRecorder = config.recordingEnabled
+                    ? new FrameRecorder(config.recordingDir)
+                    : null;
 
             CoinbaseWsClient wsClient = new CoinbaseWsClient(
-                    config, signer, disruptor.disruptor().getRingBuffer(), recoveryManager);
+                    config, signer, disruptor.disruptor().getRingBuffer(), recoveryManager, frameRecorder);
             recoveryManager.attachConnection(wsClient);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -52,6 +61,11 @@ public final class Main {
                 try {
                     monitor.close();
                 } catch (Exception ignored) { }
+                if (frameRecorder != null) {
+                    try {
+                        frameRecorder.close();
+                    } catch (Exception ignored) { }
+                }
                 // Stop the recovery manager before the WS client so the close it
                 // triggers below doesn't get misread as a fault to recover from.
                 try {
