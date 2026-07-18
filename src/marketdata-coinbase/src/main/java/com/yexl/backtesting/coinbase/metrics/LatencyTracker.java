@@ -38,6 +38,8 @@ public final class LatencyTracker {
     private final Segment receiveToParse = new Segment("recv->parse");
     private final Segment parseToApply = new Segment("parse->apply");
     private final Segment receiveToApply = new Segment("recv->apply (total in-process)");
+    private final Segment applyToPublish = new Segment("apply->publish (queue write)");
+    private final Segment receiveToPublish = new Segment("recv->publish (total incl. queue)");
 
     /**
      * Record all measurable segments for one fully-processed L2 event.
@@ -62,15 +64,35 @@ public final class LatencyTracker {
     }
 
     /**
+     * Record the queue-write segments. Called from the ChroniclePublishHandler
+     * thread — a different thread than {@link #record(MarketDataEvent)}, which
+     * is fine because the two methods touch disjoint Segments and each
+     * {@link Recorder} therefore keeps a single writer.
+     */
+    public void recordPublish(MarketDataEvent e) {
+        if (e.publishedNanos == 0L) {
+            return;
+        }
+        if (e.bookAppliedNanos != 0L) {
+            applyToPublish.record(e.publishedNanos - e.bookAppliedNanos);
+        }
+        if (e.receiveTimeNanos != 0L) {
+            receiveToPublish.record(e.publishedNanos - e.receiveTimeNanos);
+        }
+    }
+
+    /**
      * Interval summary (stats since the previous call), one line per segment.
      * Called periodically from the monitor thread.
      */
     public List<String> summaryLines() {
-        List<String> lines = new ArrayList<>(4);
+        List<String> lines = new ArrayList<>(6);
         lines.add(exchangeToReceive.describeInterval());
         lines.add(receiveToParse.describeInterval());
         lines.add(parseToApply.describeInterval());
         lines.add(receiveToApply.describeInterval());
+        lines.add(applyToPublish.describeInterval());
+        lines.add(receiveToPublish.describeInterval());
         return lines;
     }
 

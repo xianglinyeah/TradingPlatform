@@ -24,6 +24,9 @@ public final class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
+        // A trading process should not phone home. Set before any Chronicle
+        // class loads.
+        System.setProperty("chronicle.analytics.disable", "true");
         try {
             AppConfig config = AppConfig.load();
 

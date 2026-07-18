@@ -63,6 +63,11 @@ public final class AppConfig {
     public final boolean recordingEnabled;
     public final String recordingDir;
 
+    /** Venue tag stamped into every published delta (multi-venue readiness). */
+    public final String venue;
+    public final boolean chroniclePublishEnabled;
+    public final String chronicleQueueDir;
+
     private AppConfig(Properties p) {
         this.wsUrl = require(p, "coinbase.ws.url");
         this.productIds = Arrays.stream(require(p, "coinbase.product.ids").split(","))
@@ -127,6 +132,11 @@ public final class AppConfig {
 
         this.recordingEnabled = Boolean.parseBoolean(p.getProperty("recording.enabled", "false").trim());
         this.recordingDir = p.getProperty("recording.dir", "recordings").trim();
+
+        this.venue = p.getProperty("venue", "COINBASE").trim();
+        this.chroniclePublishEnabled = Boolean.parseBoolean(
+                p.getProperty("chronicle.publish.enabled", "true").trim());
+        this.chronicleQueueDir = p.getProperty("chronicle.queue.dir", "queues/md-coinbase").trim();
     }
 
     public static AppConfig load() {

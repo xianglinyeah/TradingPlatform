@@ -13,13 +13,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Wires up the LMAX Disruptor with a two-stage handler chain:
+ * Wires up the LMAX Disruptor handler chain:
  *
  * <pre>
  *   Thread 1 (WS I/O)  --publish--&gt;
  *     RingBuffer&lt;MarketDataEvent&gt;
- *       --&gt; ParseHandler    (Thread 2: JSON -&gt; BookUpdate[])
- *       --&gt; OrderBookHandler (Thread 3: apply to in-memory books)
+ *       --&gt; ParseHandler            (Thread 2: JSON -&gt; BookUpdate[])
+ *       --&gt; OrderBookHandler        (Thread 3: apply to in-memory books)
+ *       --&gt; ChroniclePublishHandler (Thread 4: normalized deltas to Chronicle Queue, optional)
  * </pre>
  *
  * <p>Single-producer (Thread 1) lets Disruptor skip CAS on publish.
@@ -29,6 +30,8 @@ public final class DisruptorOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(DisruptorOrchestrator.class);
 
     private final Disruptor<MarketDataEvent> disruptor;
+    /** Null when chronicle.publish.enabled=false. */
+    private final ChroniclePublishHandler publishHandler;
 
     public DisruptorOrchestrator(AppConfig config, OrderBookManager manager, RecoveryManager recoveryManager,
                                  LatencyTracker latencyTracker) {
@@ -43,7 +46,14 @@ public final class DisruptorOrchestrator {
         ParseHandler parseHandler = new ParseHandler(recoveryManager);
         OrderBookHandler bookHandler = new OrderBookHandler(manager, recoveryManager, latencyTracker);
 
-        disruptor.handleEventsWith(parseHandler).then(bookHandler);
+        if (config.chroniclePublishEnabled) {
+            this.publishHandler = new ChroniclePublishHandler(
+                    config.chronicleQueueDir, config.venue, manager, latencyTracker);
+            disruptor.handleEventsWith(parseHandler).then(bookHandler).then(publishHandler);
+        } else {
+            this.publishHandler = null;
+            disruptor.handleEventsWith(parseHandler).then(bookHandler);
+        }
 
         disruptor.setDefaultExceptionHandler(new ExceptionHandler<>() {
             @Override
@@ -78,6 +88,11 @@ public final class DisruptorOrchestrator {
     public void shutdown() {
         log.info("Shutting down Disruptor");
         disruptor.shutdown();
+        // After the handler chain has drained — the appender thread is done,
+        // so closing the queue here cannot race an in-flight write.
+        if (publishHandler != null) {
+            publishHandler.close();
+        }
         log.info("Disruptor stopped");
     }
 }

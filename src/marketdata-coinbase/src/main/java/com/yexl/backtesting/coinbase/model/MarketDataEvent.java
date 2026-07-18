@@ -57,6 +57,16 @@ public final class MarketDataEvent {
     /** {@link System#nanoTime()} when OrderBookHandler finished applying this event. */
     public long bookAppliedNanos;
 
+    /** {@link System#nanoTime()} when ChroniclePublishHandler finished writing this event. */
+    public long publishedNanos;
+
+    /**
+     * Wall-clock epoch nanos at publish. Written into the queue document so a
+     * tailer in another process can measure publish→consume latency (nanoTime
+     * origins are not guaranteed comparable across JVMs).
+     */
+    public long publishedEpochNanos;
+
     /** Number of valid entries in {@link #updates}. */
     public int updateCount;
 
@@ -82,6 +92,8 @@ public final class MarketDataEvent {
         exchangeTsNanos = 0L;
         parsedNanos = 0L;
         bookAppliedNanos = 0L;
+        publishedNanos = 0L;
+        publishedEpochNanos = 0L;
         updateCount = 0;
         heartbeatCounter = 0L;
         // Drop the reference to the previous batch so the array and its slot
