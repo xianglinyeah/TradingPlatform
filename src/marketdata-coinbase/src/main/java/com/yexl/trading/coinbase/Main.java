@@ -4,11 +4,12 @@ import com.yexl.trading.coinbase.auth.CdpCredentials;
 import com.yexl.trading.coinbase.auth.JwtSigner;
 import com.yexl.trading.coinbase.config.AppConfig;
 import com.yexl.trading.coinbase.disruptor.DisruptorOrchestrator;
-import com.yexl.trading.coinbase.metrics.LatencyTracker;
+import com.yexl.trading.marketdata.metrics.LatencyTracker;
 import com.yexl.trading.coinbase.monitor.BookMonitor;
-import com.yexl.trading.coinbase.orderbook.OrderBookManager;
+import com.yexl.trading.marketdata.book.OrderBookManager;
 import com.yexl.trading.coinbase.recording.FrameRecorder;
-import com.yexl.trading.coinbase.recovery.RecoveryManager;
+import com.yexl.trading.marketdata.recovery.RecoveryManager;
+import com.yexl.trading.marketdata.recovery.RecoverySettings;
 import com.yexl.trading.coinbase.ws.CoinbaseWsClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +40,10 @@ public final class Main {
 
             OrderBookManager bookManager = new OrderBookManager();
 
-            RecoveryManager recoveryManager = new RecoveryManager(config, bookManager);
+            RecoveryManager recoveryManager = new RecoveryManager(new RecoverySettings(
+                    config.heartbeatExpectedIntervalMs, config.heartbeatMissedThreshold,
+                    config.reconnectInitialBackoffMs, config.reconnectMaxBackoffMs,
+                    config.productIds), bookManager);
 
             LatencyTracker latencyTracker = new LatencyTracker();
 

@@ -1,10 +1,10 @@
-package com.yexl.trading.coinbase.orderbook;
+package com.yexl.trading.marketdata.book;
 
-import com.yexl.trading.coinbase.model.BookState;
-import com.yexl.trading.coinbase.model.BookUpdate;
-import com.yexl.trading.coinbase.model.OrderBookSnapshot;
-import com.yexl.trading.coinbase.model.PriceLevel;
-import com.yexl.trading.coinbase.model.Side;
+import com.yexl.trading.marketdata.model.BookState;
+import com.yexl.trading.marketdata.model.BookUpdate;
+import com.yexl.trading.marketdata.model.OrderBookSnapshot;
+import com.yexl.trading.marketdata.model.PriceLevel;
+import com.yexl.trading.marketdata.model.Side;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

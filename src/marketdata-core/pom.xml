@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.yexl.trading</groupId>
+        <artifactId>marketdata-java-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <relativePath>../marketdata-java-parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>marketdata-core</artifactId>
+
+    <!--
+      Venue-agnostic shared library: wire contract (wire/), normalized model
+      types (model/), orderbook rebuild (book/), STALE/LIVE recovery
+      orchestration (recovery/), latency instrumentation (metrics/), and the
+      reusable Disruptor stages (pipeline/). Venue modules contribute only
+      connection/auth/protocol-parsing/sequence-gap-detection.
+      wire/ is the cross-process contract — if an external wire-only consumer
+      ever appears, that package splits back out into its own module.
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>net.openhft</groupId>
+            <artifactId>chronicle-queue</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+    </dependencies>
+</project>

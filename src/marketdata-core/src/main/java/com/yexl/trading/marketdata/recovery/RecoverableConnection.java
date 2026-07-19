@@ -1,4 +1,4 @@
-package com.yexl.trading.coinbase.recovery;
+package com.yexl.trading.marketdata.recovery;
 
 import java.util.List;
 

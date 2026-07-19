@@ -1,7 +1,7 @@
-package com.yexl.trading.coinbase.model;
+package com.yexl.trading.marketdata.model;
 
 /**
- * Lifecycle state of an {@link com.yexl.trading.coinbase.orderbook.OrderBook}.
+ * Lifecycle state of an {@link com.yexl.trading.marketdata.book.OrderBook}.
  *
  * <p>{@code STALE} means a fault-detection trigger (sequence gap, disconnect,
  * or heartbeat timeout) has marked the book untrustworthy pending a fresh

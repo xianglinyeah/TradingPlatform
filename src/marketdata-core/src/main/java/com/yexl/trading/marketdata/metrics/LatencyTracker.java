@@ -1,6 +1,6 @@
-package com.yexl.trading.coinbase.metrics;
+package com.yexl.trading.marketdata.metrics;
 
-import com.yexl.trading.coinbase.model.MarketDataEvent;
+import com.yexl.trading.marketdata.model.MarketDataEvent;
 import org.HdrHistogram.Histogram;
 import org.HdrHistogram.Recorder;
 

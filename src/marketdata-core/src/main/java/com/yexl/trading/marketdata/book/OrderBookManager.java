@@ -1,4 +1,4 @@
-package com.yexl.trading.coinbase.orderbook;
+package com.yexl.trading.marketdata.book;
 
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;

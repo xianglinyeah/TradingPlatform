@@ -1,4 +1,4 @@
-package com.yexl.trading.coinbase.model;
+package com.yexl.trading.marketdata.model;
 
 /**
  * Coinbase Advanced Trade WebSocket top-level {@code channel} field.

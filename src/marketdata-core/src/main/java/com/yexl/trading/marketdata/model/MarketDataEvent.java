@@ -1,4 +1,4 @@
-package com.yexl.trading.coinbase.model;
+package com.yexl.trading.marketdata.model;
 
 import com.lmax.disruptor.EventFactory;
 
@@ -12,7 +12,7 @@ import com.lmax.disruptor.EventFactory;
  *   <li>Thread 2 (ParseHandler) reads {@link #rawJson}, parses with Jackson,
  *       fills {@link #updates}, and nulls out {@link #rawJson}.</li>
  *   <li>Thread 3 (OrderBookHandler) reads {@link #updates} and applies them
- *       to the {@link com.yexl.trading.coinbase.orderbook.OrderBook}.</li>
+ *       to the {@link com.yexl.trading.marketdata.book.OrderBook}.</li>
  * </ul>
  *
  * <p>{@link #updates} is allocated lazily by the parse handler because a

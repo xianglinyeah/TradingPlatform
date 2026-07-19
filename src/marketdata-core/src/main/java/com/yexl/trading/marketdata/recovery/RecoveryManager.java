@@ -1,9 +1,8 @@
-package com.yexl.trading.coinbase.recovery;
+package com.yexl.trading.marketdata.recovery;
 
-import com.yexl.trading.coinbase.config.AppConfig;
-import com.yexl.trading.coinbase.model.BookState;
-import com.yexl.trading.coinbase.orderbook.OrderBook;
-import com.yexl.trading.coinbase.orderbook.OrderBookManager;
+import com.yexl.trading.marketdata.model.BookState;
+import com.yexl.trading.marketdata.book.OrderBook;
+import com.yexl.trading.marketdata.book.OrderBookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,7 +44,7 @@ public final class RecoveryManager {
 
     private static final Logger log = LoggerFactory.getLogger(RecoveryManager.class);
 
-    private final AppConfig config;
+    private final RecoverySettings settings;
     private final OrderBookManager orderBookManager;
     private final ScheduledExecutorService executor;
 
@@ -65,8 +64,8 @@ public final class RecoveryManager {
     private final AtomicLong recoveredCount = new AtomicLong();
     private final AtomicLong reconnectAttemptCount = new AtomicLong();
 
-    public RecoveryManager(AppConfig config, OrderBookManager orderBookManager) {
-        this.config = config;
+    public RecoveryManager(RecoverySettings settings, OrderBookManager orderBookManager) {
+        this.settings = settings;
         this.orderBookManager = orderBookManager;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "recovery-manager");
@@ -82,15 +81,15 @@ public final class RecoveryManager {
 
     /** Starts the heartbeat-timeout watchdog. */
     public void start() {
-        long thresholdMs = config.heartbeatExpectedIntervalMs * config.heartbeatMissedThreshold;
+        long thresholdMs = settings.heartbeatExpectedIntervalMs * settings.heartbeatMissedThreshold;
         executor.scheduleAtFixedRate(
                 this::heartbeatWatchdogTick,
                 thresholdMs,
-                config.heartbeatExpectedIntervalMs,
+                settings.heartbeatExpectedIntervalMs,
                 TimeUnit.MILLISECONDS
         );
         log.info("RecoveryManager started (heartbeat timeout threshold={}ms, reconnect backoff {}ms..{}ms)",
-                thresholdMs, config.reconnectInitialBackoffMs, config.reconnectMaxBackoffMs);
+                thresholdMs, settings.reconnectInitialBackoffMs, settings.reconnectMaxBackoffMs);
     }
 
     public void shutdown() {
@@ -124,7 +123,7 @@ public final class RecoveryManager {
         }
         RecoverableConnection conn = connection;
         if (conn != null) {
-            conn.resubscribeLevel2(config.productIds);
+            conn.resubscribeLevel2(settings.productIds);
         }
     }
 
@@ -153,7 +152,7 @@ public final class RecoveryManager {
         if (last == 0L) {
             return; // startup grace period: no heartbeat observed yet
         }
-        long thresholdNanos = config.heartbeatExpectedIntervalMs * config.heartbeatMissedThreshold * 1_000_000L;
+        long thresholdNanos = settings.heartbeatExpectedIntervalMs * settings.heartbeatMissedThreshold * 1_000_000L;
         long elapsedNanos = System.nanoTime() - last;
         if (elapsedNanos > thresholdNanos) {
             heartbeatTimeoutCount.incrementAndGet();
@@ -208,7 +207,7 @@ public final class RecoveryManager {
             log.error("No connection attached; cannot reconnect");
             return;
         }
-        long delayMs = config.reconnectInitialBackoffMs;
+        long delayMs = settings.reconnectInitialBackoffMs;
         int attempt = 0;
         while (!shuttingDown.get()) {
             attempt++;
@@ -232,7 +231,7 @@ public final class RecoveryManager {
             } catch (Exception e) {
                 log.error("Reconnect attempt #{} failed, retrying in {}ms", attempt, delayMs, e);
                 sleepUninterruptibly(delayMs);
-                delayMs = Math.min(delayMs * 2, config.reconnectMaxBackoffMs);
+                delayMs = Math.min(delayMs * 2, settings.reconnectMaxBackoffMs);
             }
         }
     }
@@ -246,7 +245,7 @@ public final class RecoveryManager {
     }
 
     private void markAllStale(String reason) {
-        for (String productId : config.productIds) {
+        for (String productId : settings.productIds) {
             OrderBook book = orderBookManager.getOrCreate(productId);
             BookState before = book.state();
             book.clearForResubscribe();

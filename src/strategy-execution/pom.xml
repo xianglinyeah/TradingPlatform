@@ -16,7 +16,7 @@
     <dependencies>
         <dependency>
             <groupId>com.yexl.trading</groupId>
-            <artifactId>marketdata-wire</artifactId>
+            <artifactId>marketdata-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.lmax</groupId>

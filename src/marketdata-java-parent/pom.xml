@@ -16,7 +16,7 @@
       so producer and consumer must always build from the same source tree.
     -->
     <modules>
-        <module>../marketdata-wire</module>
+        <module>../marketdata-core</module>
         <module>../marketdata-coinbase</module>
         <module>../strategy-execution</module>
     </modules>
@@ -44,7 +44,7 @@
         <dependencies>
             <dependency>
                 <groupId>com.yexl.trading</groupId>
-                <artifactId>marketdata-wire</artifactId>
+                <artifactId>marketdata-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

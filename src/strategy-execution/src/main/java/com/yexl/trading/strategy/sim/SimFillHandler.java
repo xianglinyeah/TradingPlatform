@@ -3,7 +3,7 @@ package com.yexl.trading.strategy.sim;
 import com.lmax.disruptor.EventHandler;
 import com.yexl.trading.strategy.StrategyConfig;
 import com.yexl.trading.strategy.StrategyEvent;
-import com.yexl.trading.strategy.book.TopBook;
+import com.yexl.trading.marketdata.book.TopBook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,4 +1,4 @@
-package com.yexl.trading.coinbase.model;
+package com.yexl.trading.marketdata.model;
 
 /**
  * Logical message type carried by a {@link MarketDataEvent}.

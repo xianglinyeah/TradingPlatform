@@ -1,4 +1,4 @@
-package com.yexl.trading.strategy.book;
+package com.yexl.trading.marketdata.book;
 
 import com.yexl.trading.marketdata.wire.MdDelta;
 
