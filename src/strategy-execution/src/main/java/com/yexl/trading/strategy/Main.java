@@ -72,8 +72,17 @@ public final class Main {
             disruptor.after(orderWriter).handleEventsWith(simFill);
             disruptor.start();
 
+            // Backtest (stream clock): the queue is a static archive, so
+            // reaching its tail means history is exhausted — trigger a normal
+            // shutdown (System.exit runs the hook: drain, close, reports).
+            Runnable onCaughtUp = "stream".equals(config.clockMode)
+                    ? () -> {
+                        log.info("Backtest: queue drained — shutting down");
+                        new Thread(() -> System.exit(0), "backtest-exit").start();
+                    }
+                    : null;
             MdTailerThread tailer = new MdTailerThread(
-                    config.mdQueueDir, config.tailFrom, disruptor.getRingBuffer());
+                    config.mdQueueDir, config.tailFrom, disruptor.getRingBuffer(), onCaughtUp);
 
             ScheduledExecutorService stats = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "strategy-stats");

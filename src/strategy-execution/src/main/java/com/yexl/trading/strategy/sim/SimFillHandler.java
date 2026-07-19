@@ -173,6 +173,9 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
         try {
             out.close();
         } catch (IOException ignored) { }
+        if (!pending.isEmpty()) {
+            log.info("{} sim order(s) still pending at close (arrival beyond last doc) — dropped", pending.size());
+        }
         log.info("Sim fill writer closed: {} fills ({} unfilled) in {}",
                 fillCount.get(), unfilledCount.get(), file.toAbsolutePath());
         for (String line : pnlSummaryLines()) {

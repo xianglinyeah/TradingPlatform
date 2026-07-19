@@ -41,6 +41,15 @@ public final class StrategyConfig {
     /** Directory the shutdown latency report is written to. */
     public final String reportsDir;
 
+    /**
+     * Time source for cooldown / risk windows / doc-age gating.
+     * "wall" = system clock (live & paper trading). "stream" = the md docs'
+     * own recvTs (backtest replay of an archived queue): time advances only
+     * as data advances, doc-age gating is disabled, and draining the queue
+     * ends the run. Same binary, one switch — no live/backtest code fork.
+     */
+    public final String clockMode;
+
     /** Simulated order transit: fills execute against the book this much later than the signal. */
     public final long simLatencyMs;
     /** Taker fee applied to every sim fill, in basis points of notional. */
@@ -79,6 +88,11 @@ public final class StrategyConfig {
         this.latencyWarmupMs = Long.parseLong(get(p, "latency.warmup-ms", "60000"));
         this.reportsDir = get(p, "metrics.reports-dir", "reports");
 
+        this.clockMode = get(p, "clock.mode", "wall");
+        if (!clockMode.equals("wall") && !clockMode.equals("stream")) {
+            throw new IllegalArgumentException("clock.mode must be wall|stream, got " + clockMode);
+        }
+
         this.simLatencyMs = Long.parseLong(get(p, "sim.latency-ms", "15"));
         this.simFeeBps = Double.parseDouble(get(p, "sim.fee-bps", "60"));
         this.simSizeHaircut = Double.parseDouble(get(p, "sim.size-haircut", "0.5"));
@@ -107,10 +121,10 @@ public final class StrategyConfig {
             throw new RuntimeException("Failed to load strategy.properties", e);
         }
         StrategyConfig cfg = new StrategyConfig(props);
-        log.info("StrategyConfig: mdQueue={}, tailFrom={}, imbalance(N={}, T={}), cooldown={}ms, " +
+        log.info("StrategyConfig: clockMode={}, mdQueue={}, tailFrom={}, imbalance(N={}, T={}), cooldown={}ms, " +
                         "orderQty={}, risk(maxOrders/min={}, maxAbsPos={}), ordersDir={}, auditQueue={}, " +
                         "latencyWarmup={}ms, reportsDir={}",
-                cfg.mdQueueDir, cfg.tailFrom, cfg.imbalanceLevels, cfg.imbalanceThreshold,
+                cfg.clockMode, cfg.mdQueueDir, cfg.tailFrom, cfg.imbalanceLevels, cfg.imbalanceThreshold,
                 cfg.signalCooldownMs, cfg.orderQty, cfg.riskMaxOrdersPerMinute,
                 cfg.riskMaxAbsPosition, cfg.ordersDir, cfg.auditQueueDir,
                 cfg.latencyWarmupMs, cfg.reportsDir);

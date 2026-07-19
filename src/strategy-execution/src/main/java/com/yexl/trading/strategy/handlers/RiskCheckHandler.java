@@ -29,8 +29,10 @@ public final class RiskCheckHandler implements EventHandler<StrategyEvent> {
 
     private final StrategyConfig config;
     private final double orderQty;
+    /** stream mode: "now" is the current doc's recvTs — see StrategyConfig.clockMode. */
+    private final boolean streamClock;
 
-    /** Rolling window of approval timestamps (ms) for the per-minute cap. */
+    /** Rolling window of approval timestamps (epoch nanos) for the per-minute cap. */
     private final Deque<Long> approvalTimes = new ArrayDeque<>();
     /** Optimistic net position per product, in units of orderQty trades. */
     private final Map<String, Double> netPosition = new HashMap<>();
@@ -41,6 +43,7 @@ public final class RiskCheckHandler implements EventHandler<StrategyEvent> {
     public RiskCheckHandler(StrategyConfig config) {
         this.config = config;
         this.orderQty = Double.parseDouble(config.orderQty);
+        this.streamClock = "stream".equals(config.clockMode);
     }
 
     @Override
@@ -50,9 +53,11 @@ public final class RiskCheckHandler implements EventHandler<StrategyEvent> {
         }
         try {
             String product = event.delta.productId;
-            long nowMs = System.currentTimeMillis();
+            long nowNanos = streamClock
+                    ? event.delta.recvTsEpochNanos
+                    : System.currentTimeMillis() * 1_000_000L;
 
-            while (!approvalTimes.isEmpty() && nowMs - approvalTimes.peekFirst() > 60_000) {
+            while (!approvalTimes.isEmpty() && nowNanos - approvalTimes.peekFirst() > 60_000_000_000L) {
                 approvalTimes.pollFirst();
             }
             if (approvalTimes.size() >= config.riskMaxOrdersPerMinute) {
@@ -68,7 +73,7 @@ public final class RiskCheckHandler implements EventHandler<StrategyEvent> {
             }
 
             netPosition.put(product, newPos);
-            approvalTimes.addLast(nowMs);
+            approvalTimes.addLast(nowNanos);
             event.riskApproved = true;
             approved.incrementAndGet();
         } finally {

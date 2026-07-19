@@ -26,13 +26,16 @@ public final class SignalHandler implements EventHandler<StrategyEvent> {
     private static final Logger log = LoggerFactory.getLogger(SignalHandler.class);
 
     private final StrategyConfig config;
+    /** stream mode: "now" is the current doc's recvTs — see StrategyConfig.clockMode. */
+    private final boolean streamClock;
     private final Map<String, TopBook> books = new HashMap<>();
-    private final Map<String, Long> lastSignalMs = new HashMap<>();
+    private final Map<String, Long> lastSignalNanos = new HashMap<>();
 
     private final AtomicLong signalsGenerated = new AtomicLong();
 
     public SignalHandler(StrategyConfig config) {
         this.config = config;
+        this.streamClock = "stream".equals(config.clockMode);
     }
 
     @Override
@@ -52,9 +55,13 @@ public final class SignalHandler implements EventHandler<StrategyEvent> {
         // through hours of retained history — the book must be updated from
         // it, but signaling on it would be trading on the past. First live
         // E2E run generated an order from a 3.5h-old replayed doc.
-        long docAgeMs = (event.consumeEpochNanos - event.delta.pubTsEpochNanos) / 1_000_000L;
-        if (docAgeMs > config.signalMaxDocAgeMs) {
-            return;
+        // Backtest (stream clock) inverts this: replayed history is exactly
+        // what we trade on, so the gate is wall-mode only.
+        if (!streamClock) {
+            long docAgeMs = (event.consumeEpochNanos - event.delta.pubTsEpochNanos) / 1_000_000L;
+            if (docAgeMs > config.signalMaxDocAgeMs) {
+                return;
+            }
         }
 
         double bidQty = book.topNBidQty(config.imbalanceLevels);
@@ -75,12 +82,17 @@ public final class SignalHandler implements EventHandler<StrategyEvent> {
             return;
         }
 
-        long nowMs = System.currentTimeMillis();
-        Long last = lastSignalMs.get(product);
-        if (last != null && nowMs - last < config.signalCooldownMs) {
+        long nowNanos = streamClock
+                ? event.delta.recvTsEpochNanos
+                : System.currentTimeMillis() * 1_000_000L;
+        if (streamClock && nowNanos == 0) {
+            return; // timestampless doc: can't place it on the stream timeline
+        }
+        Long last = lastSignalNanos.get(product);
+        if (last != null && nowNanos - last < config.signalCooldownMs * 1_000_000L) {
             return;
         }
-        lastSignalMs.put(product, nowMs);
+        lastSignalNanos.put(product, nowNanos);
 
         BigDecimal touch = (sig == StrategyEvent.SIGNAL_BUY) ? book.bestAsk() : book.bestBid();
         event.signal = sig;

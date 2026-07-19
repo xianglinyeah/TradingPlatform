@@ -47,11 +47,15 @@ public final class MdTailerThread extends Thread {
     private long lastPseq = -1;
     /** False until the first empty poll — everything before that is startup replay. */
     private boolean caughtUp = false;
+    /** Fired once on the first empty poll. In backtest mode (static queue, no writer) this means "history exhausted". */
+    private final Runnable onCaughtUp;
     private volatile boolean running = true;
 
-    public MdTailerThread(String queueDir, String tailFrom, RingBuffer<StrategyEvent> ringBuffer) {
+    public MdTailerThread(String queueDir, String tailFrom, RingBuffer<StrategyEvent> ringBuffer,
+                          Runnable onCaughtUp) {
         super("md-tailer");
         setDaemon(true);
+        this.onCaughtUp = onCaughtUp;
         this.queue = ChronicleQueue.singleBuilder(queueDir).build();
         this.tailer = queue.createTailer();
         if ("end".equals(tailFrom)) {
@@ -82,6 +86,9 @@ public final class MdTailerThread extends Thread {
                     // are flagged so latency stats exclude them.
                     caughtUp = true;
                     log.info("Caught up to live queue tail after {} replayed docs", consumed.get());
+                    if (onCaughtUp != null) {
+                        onCaughtUp.run();
+                    }
                 }
                 if (++idleSpins < SPINS_BEFORE_YIELD) {
                     Thread.onSpinWait();
