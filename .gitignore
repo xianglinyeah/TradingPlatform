@@ -2,6 +2,17 @@
 # Build Outputs & Intermediate Files
 # =====================================
 other/
+
+# Java / Maven (src/marketdata-*, src/strategy-execution)
+src/*/target/
+dependency-reduced-pom.xml
+.kotlin
+# Java runtime output: Chronicle Queue data, order stubs, latency reports, WS recordings
+src/*/queues/
+src/*/orders/
+src/*/recordings/
+src/*/reports/
+
 # .NET / C#
 bin/
 obj/

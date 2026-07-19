@@ -1,22 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <parent>
+    <artifactId>marketdata-java-parent</artifactId>
+    <groupId>com.yexl.trading</groupId>
+    <version>1.0-SNAPSHOT</version>
+    <relativePath>../marketdata-java-parent/pom.xml</relativePath>
+  </parent>
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.yexl.backtesting</groupId>
   <artifactId>marketdata-coinbase</artifactId>
-  <version>1.0-SNAPSHOT</version>
   <build>
     <finalName>marketdata-coinbase</finalName>
     <plugins>
       <plugin>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.13.0</version>
-        <configuration>
-          <release>21</release>
-        </configuration>
-      </plugin>
-      <plugin>
         <artifactId>maven-shade-plugin</artifactId>
-        <version>3.6.0</version>
         <executions>
           <execution>
             <phase>package</phase>
@@ -26,7 +22,7 @@
             <configuration>
               <transformers>
                 <transformer>
-                  <mainClass>com.yexl.backtesting.coinbase.Main</mainClass>
+                  <mainClass>com.yexl.trading.coinbase.Main</mainClass>
                   <manifestEntries>
                     <Add-Exports>java.base/jdk.internal.ref java.base/sun.nio.ch</Add-Exports>
                     <Add-Opens>java.base/sun.nio.ch java.base/java.lang java.base/java.lang.reflect java.base/java.io java.base/java.util</Add-Opens>
@@ -74,19 +70,4 @@
       </exclusions>
     </dependency>
   </dependencies>
-  <properties>
-    <netty.version>4.1.114.Final</netty.version>
-    <bouncycastle.version>1.78.1</bouncycastle.version>
-    <maven.compiler.source>21</maven.compiler.source>
-    <jackson.version>2.17.2</jackson.version>
-    <maven.compiler.target>21</maven.compiler.target>
-    <slf4j.version>2.0.13</slf4j.version>
-    <hdrhistogram.version>2.2.2</hdrhistogram.version>
-    <jjwt.version>0.12.6</jjwt.version>
-    <chronicle-queue.version>2026.5</chronicle-queue.version>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <disruptor.version>3.4.4</disruptor.version>
-    <junit.version>5.10.2</junit.version>
-    <logback.version>1.5.6</logback.version>
-  </properties>
 </project>
