@@ -10,20 +10,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Thread 1 of the Strategy+Execution process: tails the market-data
- * Chronicle Queue and republishes each decoded document into this process's
- * Disruptor ring buffer.
+ * Thread 1 of the Strategy+Execution process: tails one or more per-venue
+ * market-data Chronicle Queues and republishes each decoded document into
+ * this process's Disruptor ring buffer.
  *
- * <p>pseq continuity is checked here (the earliest point in this process).
- * A <b>forward</b> jump means documents were lost between publisher and this
- * consumer — with a same-host memory-mapped queue this should never happen,
- * so it's counted and logged loudly. A <b>backward</b> jump means the
- * publisher restarted (each session numbers from 0) and the queue retains
- * documents from multiple sessions; that's rebased silently, mirroring how
- * ParseHandler treats a venue-sequence reset after reconnect.
+ * <p>Multi-queue merge is by <b>recvTs</b>, not round-robin: each queue has
+ * a one-document lookahead buffer, and each iteration publishes the buffered
+ * document with the smallest recvTs (all queues stamp recvTs from this same
+ * host's clock). This matters for replay: two archived queues with different
+ * document densities would drift arbitrarily far apart in stream time under
+ * round-robin, silently starving any cross-venue logic. Live, at most one
+ * buffer is typically occupied, so a sole available document is published
+ * immediately — the merge adds no latency and never waits for a quiet venue.
+ * Everything runs on ONE thread, preserving the ring buffer's
+ * {@code ProducerType.SINGLE} contract.
+ *
+ * <p>pseq continuity is checked per queue at read time (each venue publisher
+ * numbers its own session). A <b>forward</b> jump means documents were lost
+ * between publisher and this consumer — should never happen on a same-host
+ * memory-mapped queue, so it's counted and logged loudly. A <b>backward</b>
+ * jump means the publisher restarted; rebased silently.
  *
  * <p>Poll strategy: spin, with periodic {@link Thread#yield()} — deliberately
  * no {@code parkNanos}: Windows timer granularity turns a 100µs park into a
@@ -35,107 +45,159 @@ public final class MdTailerThread extends Thread {
     private static final Logger log = LoggerFactory.getLogger(MdTailerThread.class);
     private static final int SPINS_BEFORE_YIELD = 1_000;
 
-    private final ChronicleQueue queue;
-    private final ExcerptTailer tailer;
+    private final ChronicleQueue[] queues;
+    private final ExcerptTailer[] tailers;
+    private final long[] lastPseq;
+    /** One-document lookahead per queue, for the recvTs merge. */
+    private final MdDelta[] buffered;
+    private final boolean[] hasBuffered;
     private final RingBuffer<StrategyEvent> ringBuffer;
-    private final MdDelta scratch = new MdDelta();
 
     private final AtomicLong consumed = new AtomicLong();
     private final AtomicLong pseqGaps = new AtomicLong();
     private final AtomicLong unknownSchema = new AtomicLong();
 
-    private long lastPseq = -1;
-    /** False until the first empty poll — everything before that is startup replay. */
+    /** False until the first pass where every queue is empty and nothing is buffered. */
     private boolean caughtUp = false;
-    /** Fired once on the first empty poll. In backtest mode (static queue, no writer) this means "history exhausted". */
+    /** Fired once at that point. In backtest mode (static queues) this means "history exhausted". */
     private final Runnable onCaughtUp;
     private volatile boolean running = true;
 
-    public MdTailerThread(String queueDir, String tailFrom, RingBuffer<StrategyEvent> ringBuffer,
+    public MdTailerThread(List<String> queueDirs, String tailFrom, RingBuffer<StrategyEvent> ringBuffer,
                           Runnable onCaughtUp) {
         super("md-tailer");
         setDaemon(true);
         this.onCaughtUp = onCaughtUp;
-        this.queue = ChronicleQueue.singleBuilder(queueDir).build();
-        this.tailer = queue.createTailer();
-        if ("end".equals(tailFrom)) {
-            tailer.toEnd();
+        int n = queueDirs.size();
+        this.queues = new ChronicleQueue[n];
+        this.tailers = new ExcerptTailer[n];
+        this.lastPseq = new long[n];
+        this.buffered = new MdDelta[n];
+        this.hasBuffered = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            queues[i] = ChronicleQueue.singleBuilder(queueDirs.get(i)).build();
+            tailers[i] = queues[i].createTailer();
+            lastPseq[i] = -1;
+            buffered[i] = new MdDelta();
+            if ("end".equals(tailFrom)) {
+                tailers[i].toEnd();
+            }
+            // "start" = default position: replay the whole retained queue. The
+            // day's first snapshot document rebuilds book state from scratch,
+            // so a consumer joining mid-day converges to the live book.
+            log.info("MdTailerThread: queue[{}]={}, from={}", i, queues[i].file().getAbsolutePath(), tailFrom);
         }
-        // "start" = default position: replay the whole retained queue. The
-        // day's first snapshot document rebuilds book state from scratch, so
-        // a consumer joining mid-day converges to the live book.
         this.ringBuffer = ringBuffer;
-        log.info("MdTailerThread: queue={}, from={}", queue.file().getAbsolutePath(), tailFrom);
     }
 
     @Override
     public void run() {
         int idleSpins = 0;
         while (running) {
-            boolean read;
-            try {
-                read = tailer.readDocument(w -> MdWireCodec.read(w, scratch));
-            } catch (Exception e) {
-                log.error("Tailer read failed", e);
-                continue;
-            }
-            if (!read) {
-                if (!caughtUp) {
-                    // First empty poll = reached the live tail. Docs consumed
-                    // before this point were replay of the retained queue and
-                    // are flagged so latency stats exclude them.
-                    caughtUp = true;
-                    log.info("Caught up to live queue tail after {} replayed docs", consumed.get());
-                    if (onCaughtUp != null) {
-                        onCaughtUp.run();
-                    }
+            boolean readAny = refillBuffers();
+
+            int pick = -1;
+            long best = Long.MAX_VALUE;
+            for (int i = 0; i < hasBuffered.length; i++) {
+                if (hasBuffered[i] && buffered[i].recvTsEpochNanos < best) {
+                    best = buffered[i].recvTsEpochNanos;
+                    pick = i;
                 }
-                if (++idleSpins < SPINS_BEFORE_YIELD) {
-                    Thread.onSpinWait();
-                } else {
-                    Thread.yield();
-                    idleSpins = 0;
+            }
+            if (pick < 0) {
+                if (!readAny) {
+                    if (!caughtUp) {
+                        // Every queue empty, nothing buffered = reached the
+                        // live tail everywhere. Docs consumed before this
+                        // point were replay of the retained queues.
+                        caughtUp = true;
+                        log.info("Caught up to live tail on all {} queue(s) after {} replayed docs",
+                                tailers.length, consumed.get());
+                        if (onCaughtUp != null) {
+                            onCaughtUp.run();
+                        }
+                    }
+                    if (++idleSpins < SPINS_BEFORE_YIELD) {
+                        Thread.onSpinWait();
+                    } else {
+                        Thread.yield();
+                        idleSpins = 0;
+                    }
                 }
                 continue;
             }
             idleSpins = 0;
+            publish(buffered[pick]);
+            hasBuffered[pick] = false;
+        }
+        for (ChronicleQueue q : queues) {
+            q.close();
+        }
+    }
 
-            if (scratch.schemaVersion != MdWireCodec.SCHEMA_VERSION) {
-                unknownSchema.incrementAndGet();
+    /** Tries to fill every empty buffer; returns true if any queue yielded a document. */
+    private boolean refillBuffers() {
+        boolean readAny = false;
+        for (int i = 0; i < tailers.length; i++) {
+            if (hasBuffered[i]) {
                 continue;
             }
-            if (lastPseq >= 0) {
-                if (scratch.pseq > lastPseq + 1) {
-                    pseqGaps.incrementAndGet();
-                    log.error("pseq gap: expected {} got {} — document loss between publisher and consumer",
-                            lastPseq + 1, scratch.pseq);
-                } else if (scratch.pseq <= lastPseq) {
-                    log.info("pseq rebased {} -> {} (publisher session restart in retained queue)",
-                            lastPseq, scratch.pseq);
-                }
+            MdDelta target = buffered[i];
+            boolean read;
+            try {
+                read = tailers[i].readDocument(w -> MdWireCodec.read(w, target));
+            } catch (Exception e) {
+                log.error("Tailer read failed (queue {})", i, e);
+                continue;
             }
-            lastPseq = scratch.pseq;
-
-            long nowNanos = System.nanoTime();
-            Instant now = Instant.now();
-            long nowEpochNanos = now.getEpochSecond() * 1_000_000_000L + now.getNano();
-
-            // Blocking publish. The source is a durable queue, so unlike the
-            // WS thread in Process A there is nothing to lose by waiting:
-            // when the pipeline lags (e.g. during replay-from-start catchup),
-            // backpressure here just slows the replay down. tryPublishEvent
-            // was measured to drop docs during catchup, silently corrupting
-            // the book replica.
-            ringBuffer.publishEvent((event, seq) -> {
-                event.reset();
-                event.delta.copyFrom(scratch);
-                event.consumeNanos = nowNanos;
-                event.consumeEpochNanos = nowEpochNanos;
-                event.catchup = !caughtUp;
-            });
-            consumed.incrementAndGet();
+            if (!read) {
+                continue;
+            }
+            readAny = true;
+            if (target.schemaVersion != MdWireCodec.SCHEMA_VERSION) {
+                unknownSchema.incrementAndGet();
+                continue; // dropped; buffer stays empty for the next refill
+            }
+            checkPseq(i, target.pseq);
+            hasBuffered[i] = true;
         }
-        queue.close();
+        return readAny;
+    }
+
+    private void checkPseq(int queueIdx, long pseq) {
+        long last = lastPseq[queueIdx];
+        if (last >= 0) {
+            if (pseq > last + 1) {
+                pseqGaps.incrementAndGet();
+                log.error("pseq gap (queue {}): expected {} got {} — document loss between publisher and consumer",
+                        queueIdx, last + 1, pseq);
+            } else if (pseq <= last) {
+                log.info("pseq rebased {} -> {} (queue {}: publisher session restart in retained queue)",
+                        last, pseq, queueIdx);
+            }
+        }
+        lastPseq[queueIdx] = pseq;
+    }
+
+    private void publish(MdDelta doc) {
+        long nowNanos = System.nanoTime();
+        Instant now = Instant.now();
+        long nowEpochNanos = now.getEpochSecond() * 1_000_000_000L + now.getNano();
+
+        // Blocking publish. The source is a durable queue, so unlike the
+        // WS thread in Process A there is nothing to lose by waiting:
+        // when the pipeline lags (e.g. during replay-from-start catchup),
+        // backpressure here just slows the replay down. tryPublishEvent
+        // was measured to drop docs during catchup, silently corrupting
+        // the book replica.
+        ringBuffer.publishEvent((event, seq) -> {
+            event.reset();
+            event.delta.copyFrom(doc);
+            event.consumeNanos = nowNanos;
+            event.consumeEpochNanos = nowEpochNanos;
+            event.catchup = !caughtUp;
+        });
+        consumed.incrementAndGet();
     }
 
     public void shutdown() {

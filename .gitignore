@@ -12,6 +12,11 @@ src/*/queues/
 src/*/orders/
 src/*/recordings/
 src/*/reports/
+src/*/reports-okx/
+src/*/orders-okx/
+src/*/orders-arb/
+src/*/*orders*/
+src/*/*reports*/
 
 # .NET / C#
 bin/

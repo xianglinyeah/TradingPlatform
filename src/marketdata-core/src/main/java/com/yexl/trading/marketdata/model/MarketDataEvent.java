@@ -79,6 +79,10 @@ public final class MarketDataEvent {
     /** Heartbeat counter, only meaningful when {@link #messageType} == HEARTBEAT. */
     public long heartbeatCounter;
 
+    /** Venue-supplied book checksum (OKX: CRC32 of top-25 levels). Valid only when {@link #bookChecksumPresent}. */
+    public int bookChecksum;
+    public boolean bookChecksumPresent;
+
     /** Raw JSON text of the inbound WebSocket frame. Set by Thread 1, cleared by Thread 2. */
     public String rawJson;
 
@@ -96,6 +100,8 @@ public final class MarketDataEvent {
         publishedEpochNanos = 0L;
         updateCount = 0;
         heartbeatCounter = 0L;
+        bookChecksum = 0;
+        bookChecksumPresent = false;
         // Drop the reference to the previous batch so the array and its slot
         // objects can be reclaimed by young GC. Allocation cost is amortized
         // across the ring; for typical update messages it is a handful of

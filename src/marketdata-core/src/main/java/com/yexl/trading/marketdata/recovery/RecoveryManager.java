@@ -127,6 +127,46 @@ public final class RecoveryManager {
         }
     }
 
+    // ---- Trigger source: venue integrity check (e.g. OKX checksum), called from the book handler thread ----
+
+    /** Only touched on the single recovery thread. Throttles corruption-triggered
+     * resubscribes: persistent per-frame mismatches would otherwise resubscribe
+     * at frame rate (observed live during the OKX checksum-0 incident). */
+    private long lastCorruptionRecoveryNanos;
+    private boolean corruptionRecoverySeen;
+    private static final long CORRUPTION_THROTTLE_NANOS = 5_000_000_000L;
+
+    /**
+     * Non-blocking. Same response as a sequence gap: the local replica can no
+     * longer be trusted — mark everything STALE and resubscribe for a fresh
+     * snapshot. At most one resubscribe per throttle window; repeat reports
+     * within it are dropped (books are already STALE, and the in-flight
+     * snapshot will either fix them or the next report after the window
+     * retries).
+     */
+    public void onBookCorruption(String reason) {
+        executor.submit(() -> {
+            if (shuttingDown.get()) {
+                return;
+            }
+            long now = System.nanoTime();
+            if (corruptionRecoverySeen && now - lastCorruptionRecoveryNanos < CORRUPTION_THROTTLE_NANOS) {
+                return;
+            }
+            corruptionRecoverySeen = true;
+            lastCorruptionRecoveryNanos = now;
+            log.warn("Book corruption reported ({}) — marking all products STALE", reason);
+            markAllStale("corruption:" + reason);
+            if (reconnecting.get()) {
+                return;
+            }
+            RecoverableConnection conn = connection;
+            if (conn != null) {
+                conn.resubscribeLevel2(settings.productIds);
+            }
+        });
+    }
+
     // ---- Trigger source #2: disconnect (called from Netty I/O thread) ----
 
     /** Non-blocking: only increments a counter and (maybe) CASes + submits the reconnect loop. */

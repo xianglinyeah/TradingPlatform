@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -95,8 +96,17 @@ public final class SignalHandler implements EventHandler<StrategyEvent> {
         lastSignalNanos.put(product, nowNanos);
 
         BigDecimal touch = (sig == StrategyEvent.SIGNAL_BUY) ? book.bestAsk() : book.bestBid();
+        if (touch == null || touch.signum() <= 0) {
+            return; // can't size a notional-based order without a price
+        }
+        BigDecimal qty = BigDecimal.valueOf(config.orderNotionalUsd(product))
+                .divide(touch, 8, RoundingMode.DOWN);
+        if (qty.signum() <= 0) {
+            return;
+        }
         event.signal = sig;
-        event.touchPrice = touch != null ? touch.toPlainString() : null;
+        event.touchPrice = touch.toPlainString();
+        event.orderQty = qty;
         event.signalNanos = System.nanoTime();
         signalsGenerated.incrementAndGet();
 

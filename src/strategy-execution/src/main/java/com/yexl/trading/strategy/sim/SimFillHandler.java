@@ -15,12 +15,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Modeled: latency (config), displayed-size haircut (config), taker fee
  * (config). Deliberately NOT modeled: market impact and queue position —
- * legitimate while sim order size (0.001 BTC) is orders of magnitude below
+ * legitimate while sim order notional (~$100) is orders of magnitude below
  * top-level depth, and this is a taking strategy with no resting orders.
  *
  * <p>Owns its own book replicas: Disruptor handlers run on separate
@@ -49,15 +49,23 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
 
     private static final Logger log = LoggerFactory.getLogger(SimFillHandler.class);
 
+    /** Books, trackers and pending orders are all keyed venue|product —
+     * BTC-USD@COINBASE and BTC-USDT@OKX are distinct instruments. */
     private final Map<String, TopBook> books = new HashMap<>();
     /** Written by the handler thread, iterated by the stats thread — must be concurrent. */
     private final Map<String, PositionTracker> trackers = new ConcurrentSkipListMap<>();
-    private final Deque<SimOrder> pending = new ArrayDeque<>();
+    /** Min-heap on arrivalTs: cross-venue event interleave makes insertion
+     * order only approximately arrival-ordered, and a FIFO would stall due
+     * orders behind a not-yet-due head. orderId tie-break keeps replays
+     * deterministic. */
+    private final PriorityQueue<SimOrder> pending = new PriorityQueue<>(
+            Comparator.comparingLong((SimOrder o) -> o.arrivalTs).thenComparingLong(o -> o.orderId));
 
+    private final StrategyConfig config;
     private final long simLatencyNanos;
-    private final BigDecimal feeRate;
+    /** Per-venue taker fee rates (venues differ: Coinbase ~60bps vs OKX ~10bps). */
+    private final Map<String, BigDecimal> feeRates = new HashMap<>();
     private final BigDecimal sizeHaircut;
-    private final BigDecimal orderQty;
 
     private final BufferedWriter out;
     private final Path file;
@@ -66,10 +74,9 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
     private long fillId;
 
     public SimFillHandler(StrategyConfig config) throws IOException {
+        this.config = config;
         this.simLatencyNanos = config.simLatencyMs * 1_000_000L;
-        this.feeRate = BigDecimal.valueOf(config.simFeeBps).movePointLeft(4);
         this.sizeHaircut = BigDecimal.valueOf(config.simSizeHaircut);
-        this.orderQty = new BigDecimal(config.orderQty);
         Path dir = Path.of(config.ordersDir);
         Files.createDirectories(dir);
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
@@ -82,46 +89,59 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
     @Override
     public void onEvent(StrategyEvent event, long sequence, boolean endOfBatch) {
         String product = event.delta.productId;
-        if (product == null) {
+        String venue = event.delta.venue;
+        if (product == null || venue == null) {
             return;
         }
-        TopBook book = books.computeIfAbsent(product, k -> new TopBook());
+        String key = venue + '|' + product;
+        TopBook book = books.computeIfAbsent(key, k -> new TopBook());
         book.apply(event.delta);
 
         BigDecimal mid = book.mid();
         if (mid != null) {
-            trackers.computeIfAbsent(product, k -> new PositionTracker()).markMid(mid.doubleValue());
+            trackers.computeIfAbsent(key, k -> new PositionTracker()).markMid(mid.doubleValue());
         }
 
-        if (event.riskApproved && event.signal != StrategyEvent.SIGNAL_NONE
-                && event.delta.recvTsEpochNanos > 0) {
-            pending.addLast(new SimOrder(event.orderId, product, event.signal,
-                    orderQty, event.delta.recvTsEpochNanos + simLatencyNanos));
+        if (event.riskApproved && event.delta.recvTsEpochNanos > 0) {
+            long arrival = event.delta.recvTsEpochNanos + simLatencyNanos;
+            if (event.arbSignal) {
+                StrategyEvent.Leg buy = event.arbBuyLeg;
+                StrategyEvent.Leg sell = event.arbSellLeg;
+                pending.add(new SimOrder(buy.orderId, buy.venue, buy.productId,
+                        StrategyEvent.SIGNAL_BUY, buy.qty, arrival));
+                pending.add(new SimOrder(sell.orderId, sell.venue, sell.productId,
+                        StrategyEvent.SIGNAL_SELL, sell.qty, arrival));
+            } else if (event.signal != StrategyEvent.SIGNAL_NONE && event.orderQty != null) {
+                pending.add(new SimOrder(event.orderId, venue, product, event.signal,
+                        event.orderQty, arrival));
+            }
         }
 
         // The md stream is the fill clock: any doc's recvTs advances "now";
         // a due order executes against its product's book as of that moment.
         long now = event.delta.recvTsEpochNanos;
-        while (now > 0 && !pending.isEmpty() && pending.peekFirst().arrivalTs <= now) {
-            execute(pending.pollFirst(), now);
+        while (now > 0 && !pending.isEmpty() && pending.peek().arrivalTs <= now) {
+            execute(pending.poll(), now);
         }
     }
 
     private void execute(SimOrder order, long execTs) {
-        TopBook book = books.get(order.product);
+        String key = order.venue + '|' + order.product;
+        TopBook book = books.get(key);
         boolean buy = order.side == StrategyEvent.SIGNAL_BUY;
         TopBook.WalkResult r = book == null ? null : book.walk(buy, order.qty, sizeHaircut);
         if (r == null) {
             unfilledCount.incrementAndGet();
             log.warn("[{}] sim order {} UNFILLED (no liquidity on {} side)",
-                    order.product, order.orderId, buy ? "ask" : "bid");
+                    key, order.orderId, buy ? "ask" : "bid");
             return;
         }
         BigDecimal notional = r.avgPrice().multiply(r.filledQty());
-        BigDecimal fee = notional.multiply(feeRate);
+        BigDecimal fee = notional.multiply(feeRates.computeIfAbsent(order.venue,
+                v -> BigDecimal.valueOf(config.simFeeBps(v)).movePointLeft(4)));
         boolean partial = r.filledQty().compareTo(order.qty) < 0;
 
-        PositionTracker tracker = trackers.computeIfAbsent(order.product, k -> new PositionTracker());
+        PositionTracker tracker = trackers.computeIfAbsent(key, k -> new PositionTracker());
         double signedQty = buy ? r.filledQty().doubleValue() : -r.filledQty().doubleValue();
         tracker.onFill(signedQty, r.avgPrice().doubleValue(), fee.doubleValue(), partial);
         fillCount.incrementAndGet();
@@ -134,6 +154,7 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
             out.write("{\"fillId\":" + (fillId++)
                     + ",\"orderId\":" + order.orderId
                     + ",\"tsEpochNanos\":" + execTs
+                    + ",\"venue\":\"" + order.venue + '"'
                     + ",\"product\":\"" + order.product + '"'
                     + ",\"side\":\"" + (order.side == StrategyEvent.SIGNAL_BUY ? "BUY" : "SELL") + '"'
                     + ",\"requestedQty\":\"" + order.qty.toPlainString() + '"'
@@ -185,14 +206,16 @@ public final class SimFillHandler implements EventHandler<StrategyEvent>, AutoCl
 
     private static final class SimOrder {
         final long orderId;
+        final String venue;
         final String product;
         final int side;
         final BigDecimal qty;
         /** md-stream recvTs at which this order "reaches the exchange". */
         final long arrivalTs;
 
-        SimOrder(long orderId, String product, int side, BigDecimal qty, long arrivalTs) {
+        SimOrder(long orderId, String venue, String product, int side, BigDecimal qty, long arrivalTs) {
             this.orderId = orderId;
+            this.venue = venue;
             this.product = product;
             this.side = side;
             this.qty = qty;

@@ -45,6 +45,24 @@ public final class AuditHandler
 
     @Override
     public void onEvent(StrategyEvent event, long sequence, boolean endOfBatch) {
+        if (event.arbSignal) {
+            appender.writeDocument(w -> {
+                w.write("v").int32(2);
+                w.write("ts").int64(event.consumeEpochNanos);
+                w.write("sym").text(event.arbSymbol);
+                w.write("dev").float64(event.arbDevBps);
+                w.write("ema").float64(event.arbEmaBps);
+                w.write("bVen").text(event.arbBuyLeg.venue);
+                w.write("bPrd").text(event.arbBuyLeg.productId);
+                w.write("bPx").text(event.arbBuyLeg.touchPrice);
+                w.write("sVen").text(event.arbSellLeg.venue);
+                w.write("sPrd").text(event.arbSellLeg.productId);
+                w.write("sPx").text(event.arbSellLeg.touchPrice);
+                w.write("qty").text(event.arbBuyLeg.qty.toPlainString());
+            });
+            audited.incrementAndGet();
+            return;
+        }
         if (event.signal == StrategyEvent.SIGNAL_NONE) {
             return;
         }

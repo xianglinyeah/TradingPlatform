@@ -18,6 +18,7 @@
     <modules>
         <module>../marketdata-core</module>
         <module>../marketdata-coinbase</module>
+        <module>../marketdata-okx</module>
         <module>../strategy-execution</module>
     </modules>
 

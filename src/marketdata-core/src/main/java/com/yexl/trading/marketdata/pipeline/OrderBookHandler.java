@@ -39,6 +39,8 @@ public final class OrderBookHandler implements EventHandler<MarketDataEvent> {
     private final OrderBookManager manager;
     private final RecoveryManager recoveryManager;
     private final LatencyTracker latencyTracker;
+    /** Optional venue integrity hook (e.g. OKX checksum); null for venues without one. */
+    private final BookIntegrityCheck integrityCheck;
 
     // Reused scratch structures. OrderBookHandler is single-threaded (Disruptor
     // guarantees it), so these don't need synchronization.
@@ -47,9 +49,15 @@ public final class OrderBookHandler implements EventHandler<MarketDataEvent> {
 
     public OrderBookHandler(OrderBookManager manager, RecoveryManager recoveryManager,
                             LatencyTracker latencyTracker) {
+        this(manager, recoveryManager, latencyTracker, null);
+    }
+
+    public OrderBookHandler(OrderBookManager manager, RecoveryManager recoveryManager,
+                            LatencyTracker latencyTracker, BookIntegrityCheck integrityCheck) {
         this.manager = manager;
         this.recoveryManager = recoveryManager;
         this.latencyTracker = latencyTracker;
+        this.integrityCheck = integrityCheck;
     }
 
     @Override
@@ -61,6 +69,11 @@ public final class OrderBookHandler implements EventHandler<MarketDataEvent> {
                 // subscription acks would dilute the distribution.
                 event.bookAppliedNanos = System.nanoTime();
                 latencyTracker.record(event);
+                // After the stamp so the bookApplied segment stays pure apply
+                // cost; the check's cost still shows in the publish segment.
+                if (integrityCheck != null) {
+                    integrityCheck.afterApply(event, manager);
+                }
             }
             case HEARTBEAT -> {
                 recoveryManager.onHeartbeat();

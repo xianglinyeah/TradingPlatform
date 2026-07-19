@@ -4,6 +4,8 @@ import com.lmax.disruptor.YieldingWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
+import com.yexl.trading.strategy.handlers.ArbRiskCheckHandler;
+import com.yexl.trading.strategy.handlers.ArbSignalHandler;
 import com.yexl.trading.strategy.handlers.AuditHandler;
 import com.yexl.trading.strategy.handlers.OrderWriterHandler;
 import com.yexl.trading.strategy.handlers.RiskCheckHandler;
@@ -17,10 +19,13 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Entry point for the merged Strategy+Execution process (Process BC).
@@ -58,15 +63,37 @@ public final class Main {
                     new YieldingWaitStrategy()
             );
 
-            SignalHandler signalHandler = new SignalHandler(config);
-            RiskCheckHandler riskHandler = new RiskCheckHandler(config);
             OrderWriterHandler orderWriter = new OrderWriterHandler(config, latency);
             AuditHandler auditHandler = new AuditHandler(config.auditQueueDir);
             SimFillHandler simFill = new SimFillHandler(config);
 
-            disruptor.handleEventsWith(signalHandler);
-            disruptor.after(signalHandler).handleEventsWith(riskHandler, auditHandler);
-            disruptor.after(riskHandler).handleEventsWith(orderWriter);
+            // Same pipeline topology in both modes; only the signal and risk
+            // stages are mode-specific. Stats suppliers abstract the counters.
+            LongSupplier signalsCount;
+            LongSupplier approvedCount;
+            LongSupplier rejectedCount;
+            Supplier<List<String>> arbSummary;
+            if ("arb".equals(config.strategyMode)) {
+                ArbSignalHandler arbHandler = new ArbSignalHandler(config);
+                ArbRiskCheckHandler arbRisk = new ArbRiskCheckHandler(config);
+                disruptor.handleEventsWith(arbHandler);
+                disruptor.after(arbHandler).handleEventsWith(arbRisk, auditHandler);
+                disruptor.after(arbRisk).handleEventsWith(orderWriter);
+                signalsCount = arbHandler::signalsGeneratedCount;
+                approvedCount = arbRisk::approvedCount;
+                rejectedCount = arbRisk::rejectedCount;
+                arbSummary = arbHandler::summaryLines;
+            } else {
+                SignalHandler signalHandler = new SignalHandler(config);
+                RiskCheckHandler riskHandler = new RiskCheckHandler(config);
+                disruptor.handleEventsWith(signalHandler);
+                disruptor.after(signalHandler).handleEventsWith(riskHandler, auditHandler);
+                disruptor.after(riskHandler).handleEventsWith(orderWriter);
+                signalsCount = signalHandler::signalsGeneratedCount;
+                approvedCount = riskHandler::approvedCount;
+                rejectedCount = riskHandler::rejectedCount;
+                arbSummary = List::of;
+            }
             // Sim execution sits after the measured pipeline tail: placedNanos
             // stays the latency endpoint, fills happen on later md docs anyway.
             disruptor.after(orderWriter).handleEventsWith(simFill);
@@ -82,7 +109,7 @@ public final class Main {
                     }
                     : null;
             MdTailerThread tailer = new MdTailerThread(
-                    config.mdQueueDir, config.tailFrom, disruptor.getRingBuffer(), onCaughtUp);
+                    config.mdQueueDirs, config.tailFrom, disruptor.getRingBuffer(), onCaughtUp);
 
             ScheduledExecutorService stats = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "strategy-stats");
@@ -94,10 +121,13 @@ public final class Main {
                 try {
                     log.info("[stats] consumed={} pseqGaps={} signals={} approved={} rejected={} orders={} fills={} unfilled={}",
                             tailer.consumedCount(), tailer.pseqGapCount(),
-                            signalHandler.signalsGeneratedCount(),
-                            riskHandler.approvedCount(), riskHandler.rejectedCount(),
+                            signalsCount.getAsLong(),
+                            approvedCount.getAsLong(), rejectedCount.getAsLong(),
                             orderWriter.ordersWrittenCount(),
                             simFill.fillCount(), simFill.unfilledCount());
+                    for (String line : arbSummary.get()) {
+                        log.info("[arb] {}", line);
+                    }
                     for (String line : simFill.pnlSummaryLines()) {
                         log.info("[pnl] {}", line);
                     }

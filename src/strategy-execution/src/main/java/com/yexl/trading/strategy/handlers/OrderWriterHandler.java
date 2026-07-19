@@ -46,15 +46,49 @@ public final class OrderWriterHandler implements EventHandler<StrategyEvent>, Au
         log.info("Order writer opened: {}", file.toAbsolutePath());
     }
 
+    private long arbId;
+
     @Override
     public void onEvent(StrategyEvent event, long sequence, boolean endOfBatch) {
         // Latency is recorded for every md doc (not only signals) so the
         // md-consume segments aren't biased toward signal-bearing events.
-        if (event.signal != StrategyEvent.SIGNAL_NONE && event.riskApproved) {
+        if (event.arbSignal && event.riskApproved) {
+            writeArbOrders(event);
+        } else if (event.signal != StrategyEvent.SIGNAL_NONE && event.riskApproved) {
             writeOrder(event);
         }
         event.placedNanos = System.nanoTime();
         latency.record(event);
+    }
+
+    /** Two lines sharing an arbId — one order pair, atomically approved. */
+    private void writeArbOrders(StrategyEvent e) {
+        long pairId = arbId++;
+        writeArbLeg(e, pairId, e.arbBuyLeg, "BUY");
+        writeArbLeg(e, pairId, e.arbSellLeg, "SELL");
+    }
+
+    private void writeArbLeg(StrategyEvent e, long pairId, StrategyEvent.Leg leg, String side) {
+        try {
+            leg.orderId = orderId;
+            out.write("{\"id\":" + (orderId++)
+                    + ",\"arbId\":" + pairId
+                    + ",\"symbol\":\"" + e.arbSymbol + '"'
+                    + ",\"tsEpochNanos\":" + e.consumeEpochNanos
+                    + ",\"venue\":\"" + leg.venue + '"'
+                    + ",\"product\":\"" + leg.productId + '"'
+                    + ",\"side\":\"" + side + '"'
+                    + ",\"qty\":\"" + leg.qty.toPlainString() + '"'
+                    + ",\"price\":\"" + leg.touchPrice + '"'
+                    + ",\"devBps\":" + String.format("%.4f", e.arbDevBps)
+                    + ",\"emaBps\":" + String.format("%.4f", e.arbEmaBps)
+                    + "}");
+            out.newLine();
+            out.flush();
+            ordersWritten.incrementAndGet();
+        } catch (IOException ex) {
+            log.error("Arb order write failed", ex);
+        }
     }
 
     private void writeOrder(StrategyEvent e) {
@@ -67,6 +101,7 @@ public final class OrderWriterHandler implements EventHandler<StrategyEvent>, Au
                     + ",\"venue\":\"" + e.delta.venue + '"'
                     + ",\"product\":\"" + e.delta.productId + '"'
                     + ",\"side\":\"" + (e.signal == StrategyEvent.SIGNAL_BUY ? "BUY" : "SELL") + '"'
+                    + ",\"qty\":\"" + e.orderQty.toPlainString() + '"'
                     + ",\"price\":\"" + e.touchPrice + '"'
                     + ",\"imbalance\":" + String.format("%.4f", e.imbalance)
                     + ",\"srcPseq\":" + e.delta.pseq

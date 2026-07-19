@@ -1,24 +1,20 @@
-package com.yexl.trading.coinbase;
+package com.yexl.trading.okx;
 
-import com.yexl.trading.coinbase.auth.CdpCredentials;
-import com.yexl.trading.coinbase.auth.JwtSigner;
-import com.yexl.trading.coinbase.config.AppConfig;
-import com.yexl.trading.coinbase.disruptor.DisruptorOrchestrator;
+import com.yexl.trading.marketdata.book.OrderBookManager;
 import com.yexl.trading.marketdata.metrics.LatencyTracker;
 import com.yexl.trading.marketdata.monitor.BookMonitor;
-import com.yexl.trading.marketdata.book.OrderBookManager;
-import com.yexl.trading.coinbase.recording.FrameRecorder;
 import com.yexl.trading.marketdata.recovery.RecoveryManager;
 import com.yexl.trading.marketdata.recovery.RecoverySettings;
-import com.yexl.trading.coinbase.ws.CoinbaseWsClient;
+import com.yexl.trading.okx.config.AppConfig;
+import com.yexl.trading.okx.disruptor.DisruptorOrchestrator;
+import com.yexl.trading.okx.ws.OkxWsClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Entry point. Wires config, credentials, Disruptor, WS client, and monitor.
- *
- * <p>Shutdown via Ctrl-C / SIGTERM triggers a shutdown hook that stops
- * components in reverse-startup order.
+ * Entry point for the OKX market data process (Process A, OKX venue).
+ * Same wiring as the Coinbase entry point, minus credentials — the public
+ * books channel is unauthenticated.
  */
 public final class Main {
 
@@ -30,13 +26,6 @@ public final class Main {
         System.setProperty("chronicle.analytics.disable", "true");
         try {
             AppConfig config = AppConfig.load();
-
-            CdpCredentials credentials = CdpCredentials.load(config.apiKey, config.signingKeyPath);
-            JwtSigner signer = new JwtSigner(
-                    credentials, config.jwtTtlSeconds, config.jwtRefreshBeforeExpSeconds);
-            // Force an initial sign — fail fast if the key is bad.
-            signer.get();
-            log.info("Initial JWT signed successfully");
 
             OrderBookManager bookManager = new OrderBookManager();
 
@@ -55,12 +44,8 @@ public final class Main {
                     bookManager, config.productIds, config.snapshotLogDepth, config.snapshotLogIntervalMs,
                     recoveryManager, latencyTracker, config.latencyLogIntervalMs);
 
-            FrameRecorder frameRecorder = config.recordingEnabled
-                    ? new FrameRecorder(config.recordingDir)
-                    : null;
-
-            CoinbaseWsClient wsClient = new CoinbaseWsClient(
-                    config, signer, disruptor.disruptor().getRingBuffer(), recoveryManager, frameRecorder);
+            OkxWsClient wsClient = new OkxWsClient(
+                    config, disruptor.disruptor().getRingBuffer(), recoveryManager);
             recoveryManager.attachConnection(wsClient);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -68,11 +53,6 @@ public final class Main {
                 try {
                     monitor.close();
                 } catch (Exception ignored) { }
-                if (frameRecorder != null) {
-                    try {
-                        frameRecorder.close();
-                    } catch (Exception ignored) { }
-                }
                 // Stop the recovery manager before the WS client so the close it
                 // triggers below doesn't get misread as a fault to recover from.
                 try {
@@ -91,7 +71,6 @@ public final class Main {
             recoveryManager.start();
             log.info("Service started. Products={}. Press Ctrl-C to shut down.", config.productIds);
 
-            // Block until the channel is closed (or the JVM is killed).
             wsClient.awaitClose();
             log.info("WS channel closed; main thread exiting");
         } catch (Exception e) {

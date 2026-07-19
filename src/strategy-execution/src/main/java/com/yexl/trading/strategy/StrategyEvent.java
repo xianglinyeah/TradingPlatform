@@ -32,6 +32,8 @@ public final class StrategyEvent {
     public double imbalance;
     /** Touch price the order would cross at (best ask for BUY, best bid for SELL), decimal string. */
     public String touchPrice;
+    /** Base-currency order qty: per-product USD notional / touch price. */
+    public java.math.BigDecimal orderQty;
     public long signalNanos;
 
     // ---- RiskCheckHandler outputs ----
@@ -44,6 +46,36 @@ public final class StrategyEvent {
     /** Order id assigned when the order JSONL line is written; -1 = no order. */
     public long orderId;
 
+    // ---- Arb mode (strategy.mode=arb): one signal = two legs ----
+    /** True when ArbSignalHandler populated both legs. */
+    public boolean arbSignal;
+    public String arbSymbol;
+    /** Spread deviation from its EMA at signal time, bps of mid. */
+    public double arbDevBps;
+    /** EMA of the cross-venue spread at signal time, bps of mid. */
+    public double arbEmaBps;
+    public final Leg arbBuyLeg = new Leg();
+    public final Leg arbSellLeg = new Leg();
+
+    /** One venue-specific leg of an arb order pair. */
+    public static final class Leg {
+        public String venue;
+        public String productId;
+        public java.math.BigDecimal qty;
+        /** Touch price this leg would cross at (ask for the buy leg, bid for the sell leg). */
+        public String touchPrice;
+        /** Order id assigned by OrderWriterHandler; -1 = not placed. */
+        public long orderId = -1L;
+
+        void reset() {
+            venue = null;
+            productId = null;
+            qty = null;
+            touchPrice = null;
+            orderId = -1L;
+        }
+    }
+
     public void reset() {
         delta.clear();
         consumeNanos = 0L;
@@ -52,12 +84,19 @@ public final class StrategyEvent {
         signal = SIGNAL_NONE;
         imbalance = 0.0;
         touchPrice = null;
+        orderQty = null;
         signalNanos = 0L;
         riskApproved = false;
         riskRejectReason = null;
         riskNanos = 0L;
         placedNanos = 0L;
         orderId = -1L;
+        arbSignal = false;
+        arbSymbol = null;
+        arbDevBps = 0.0;
+        arbEmaBps = 0.0;
+        arbBuyLeg.reset();
+        arbSellLeg.reset();
     }
 
     public static final EventFactory<StrategyEvent> FACTORY = StrategyEvent::new;
