@@ -1,0 +1,147 @@
+{
+  "uid": "hft-latency",
+  "title": "HFT Latency",
+  "description": "MD pipeline latency (per-second aggregates from queue replay, hft.md_stats), strategy decision latency (orders), and end-of-run latency report summaries (hft.latency_reports). recv→pub is same-host and skew-free; exch→* segments are signed and include cross-clock skew.",
+  "tags": ["trading", "latency", "clickhouse"],
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "MD recv→pub p50 (per second)",
+      "description": "WS receive → queue publish inside each market-data process.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, recvToPubP50Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(recvToPubP50Us) ORDER BY ts"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "MD recv→pub p99 (per second)",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, recvToPubP99Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(recvToPubP99Us) ORDER BY ts"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Exchange→recv p50 (signed, incl. clock skew)",
+      "description": "Exchange frame timestamp → local WS receive. Cross-clock: absolute value includes skew; watch the shape, not the level.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, exchToRecvP50Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(exchToRecvP50Us) ORDER BY ts"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Strategy decision latency per order (pub→decision)",
+      "description": "Queue publish → order decision wall-clock, per placed order. Live runs only (backtest orders carry replay wall-clock and are excluded by the pubTs sanity bound).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs",
+          "custom": { "drawStyle": "points", "pointSize": 5, "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT ts, runId, (tsEpochNanos - pubTs) / 1000 AS pubToDecisionUs FROM hft.orders WHERE isNotNull(pubTs) AND (tsEpochNanos - pubTs) BETWEEN 0 AND 60000000000 AND $__timeFilter(ts) ORDER BY ts"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "End-of-run latency reports (all runs, µs)",
+      "description": "Parsed from reports*/latency-*.txt. Backtest runs report n=0 by design (replay latency vs wall clock is meaningless).",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "sortBy": [{ "displayName": "report", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT label AS run, reportTs AS report, segment, n, round(p50Us, 1) AS \"p50 µs\", round(p99Us, 1) AS \"p99 µs\", round(p999Us, 1) AS \"p99.9 µs\", round(maxUs, 1) AS \"max µs\" FROM hft.latency_reports WHERE n > 0 ORDER BY reportTs DESC, segment"
+        }
+      ]
+    }
+  ]
+}

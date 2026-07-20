@@ -1,0 +1,181 @@
+{
+  "uid": "hft-orders",
+  "title": "HFT Orders",
+  "description": "What was actually placed: per-order detail joined with sim fills, order rate, notional, and arb leg-pairing integrity. Note: order timestamps are decision wall-clock — backtest orders sit at replay time.",
+  "tags": ["trading", "orders", "clickhouse"],
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "run",
+        "label": "Run",
+        "type": "query",
+        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+        "query": {
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT DISTINCT runId FROM hft.orders ORDER BY runId",
+          "refId": "variable"
+        },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Orders",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT count() AS orders FROM hft.orders WHERE runId IN (${run:singlequote}) AND $__timeFilter(ts)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total notional",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT round(sum(toFloat64(qty) * toFloat64(price)), 0) AS notional FROM hft.orders WHERE runId IN (${run:singlequote}) AND $__timeFilter(ts)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Avg order notional",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT round(avg(toFloat64(qty) * toFloat64(price)), 2) AS avgNotional FROM hft.orders WHERE runId IN (${run:singlequote}) AND $__timeFilter(ts)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Unpaired arb legs (must be 0)",
+      "description": "Arb risk check commits both legs atomically — any arbId without exactly two orders is a bug.",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT count() AS unpaired FROM (SELECT runId, arbId FROM hft.orders WHERE isNotNull(arbId) AND runId IN (${run:singlequote}) GROUP BY runId, arbId HAVING count() != 2)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Breakdown by venue / product / side",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT venue, product, side, count() AS orders, round(sum(toFloat64(qty) * toFloat64(price)), 0) AS \"notional $\" FROM hft.orders WHERE runId IN (${run:singlequote}) AND $__timeFilter(ts) GROUP BY venue, product, side ORDER BY venue, product, side"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Order rate (per minute)",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 1, "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfMinute(ts) AS t, runId, toUInt32(count()) AS orders FROM hft.orders WHERE runId IN (${run:singlequote}) AND $__timeFilter(ts) GROUP BY t, runId ORDER BY t"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Order detail (latest 500 in range)",
+      "description": "Orders joined with their sim fill and slippage. fillPx/fee/slip empty = order file predates the fill simulator or fill not matched.",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT o.ts AS time, o.runId AS run, o.venue AS venue, o.product AS product, o.side AS side, toFloat64(o.qty) AS qty, toFloat64(o.price) AS price, round(toFloat64(o.qty) * toFloat64(o.price), 2) AS \"notional $\", f.px AS fillPx, round(f.feeUsd, 4) AS \"fee $\", round(s.slipBps, 3) AS \"slip bps\", f.partial AS partial, o.arbId AS arbId, round(o.imbalance, 4) AS imbalance, round(o.devBps, 3) AS devBps FROM hft.orders AS o LEFT JOIN hft.v_fills AS f ON f.runId = o.runId AND f.venue = o.venue AND f.orderId = o.id LEFT JOIN hft.v_slippage AS s ON s.runId = o.runId AND s.venue = o.venue AND s.orderId = o.id WHERE o.runId IN (${run:singlequote}) AND $__timeFilter(o.ts) ORDER BY o.ts DESC LIMIT 500"
+        }
+      ]
+    }
+  ]
+}
