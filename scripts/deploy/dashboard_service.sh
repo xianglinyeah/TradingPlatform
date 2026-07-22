@@ -11,7 +11,7 @@ echo "🚀 Starting dashboard_service OFFLINE deployment..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-SERVICE_DIR="$PROJECT_ROOT/src/dashboard-service"
+SERVICE_DIR="$PROJECT_ROOT/lowfreq/python/dashboard-service"
 
 # 1. Prepare offline dependencies (manylinux cp312 wheels)
 echo "📦 Preparing offline Python dependencies (cp312 manylinux)..."
@@ -43,7 +43,7 @@ echo "  ✅ Wheels downloaded: $(ls -1 artifacts/wheels/*.whl 2>/dev/null | wc -
 # 2. Build Docker image (completely offline)
 echo "🐳 Building offline Docker image..."
 cd "$PROJECT_ROOT"
-docker build -t docker-dashboard-service:latest src/dashboard-service/
+docker build -t docker-dashboard-service:latest lowfreq/python/dashboard-service/
 
 # 3. Verify image
 echo "✅ Verifying image..."

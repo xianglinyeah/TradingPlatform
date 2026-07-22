@@ -3,20 +3,20 @@
 # =====================================
 other/
 
-# Java / Maven (src/marketdata-*, src/strategy-execution)
-src/*/target/
+# Java / Maven (hft/marketdata-*, hft/strategy-execution)
+hft/*/target/
 dependency-reduced-pom.xml
 .kotlin
 # Java runtime output: Chronicle Queue data, order stubs, latency reports, WS recordings
-src/*/queues/
-src/*/orders/
-src/*/recordings/
-src/*/reports/
-src/*/reports-okx/
-src/*/orders-okx/
-src/*/orders-arb/
-src/*/*orders*/
-src/*/*reports*/
+hft/*/queues/
+hft/*/orders/
+hft/*/recordings/
+hft/*/reports/
+hft/*/reports-okx/
+hft/*/orders-okx/
+hft/*/orders-arb/
+hft/*/*orders*/
+hft/*/*reports*/
 
 # .NET / C#
 bin/
@@ -294,9 +294,8 @@ Backups/
 # Documentation Build
 # =====================================
 
-docs/_build/
+
 site/
-docs/
 
 # =====================================
 # Crash Dumps & Debug Files

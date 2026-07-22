@@ -11,7 +11,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # 1. Prepare offline dependencies
 echo "📦 Preparing offline Python dependencies..."
-cd "$PROJECT_ROOT/src/strategy-engine"
+cd "$PROJECT_ROOT/lowfreq/python/strategy-engine"
 
 # Clean old dependencies (cp311 wheels from the previous Python 3.11 build)
 rm -rf local-packages
@@ -42,7 +42,7 @@ fi
 # 2. Build Docker image (completely offline)
 echo "🐳 Building offline Docker image..."
 cd "$PROJECT_ROOT"
-docker build -t docker-strategy-engine:latest src/strategy-engine/
+docker build -t docker-strategy-engine:latest lowfreq/python/strategy-engine/
 
 # 3. Verify image
 echo "✅ Verifying image..."

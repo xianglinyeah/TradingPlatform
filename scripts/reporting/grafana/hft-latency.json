@@ -3,22 +3,22 @@
   "title": "HFT Latency",
   "description": "MD pipeline latency (per-second aggregates from queue replay, hft.md_stats), strategy decision latency (orders), and end-of-run latency report summaries (hft.latency_reports). recv→pub is same-host and skew-free; exch→* segments are signed and include cross-clock skew.",
   "tags": ["trading", "latency", "clickhouse"],
-  "schemaVersion": 39,
+  "schemaVersion": 42,
   "editable": true,
   "time": { "from": "now-7d", "to": "now" },
   "templating": { "list": [] },
   "panels": [
     {
-      "id": 1,
+      "id": 6,
       "type": "timeseries",
-      "title": "MD recv→pub p50 (per second)",
-      "description": "WS receive → queue publish inside each market-data process.",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "title": "EC2 live p50 (imported every ~1min from journald, not a whole-run report)",
+      "description": "label=ec2-live: periodic interval [latency] lines scraped from the running EC2 processes via SSM (scripts/reporting/import_latency_live.ps1), no restart involved. Separate from the one-off 'ec2' snapshot in the table below.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
       "fieldConfig": {
         "defaults": {
           "unit": "µs",
-          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
+          "custom": { "drawStyle": "line", "lineWidth": 2, "spanNulls": true, "showPoints": "never" }
         },
         "overrides": []
       },
@@ -33,20 +33,21 @@
           "editorType": "sql",
           "queryType": "timeseries",
           "format": 0,
-          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, recvToPubP50Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(recvToPubP50Us) ORDER BY ts"
+          "rawSql": "SELECT reportTs AS ts, multiIf(segment = 'exch->recv (epoch, skew-bounded)', '1. Receive market data (exchange network)', segment = 'recv->parse', '2. Parse WS frame', segment = 'parse->apply', '3. Rebuild order book', segment = 'apply->publish (queue write)', '4. Publish to queue', segment = 'recv->apply (total in-process)', 'Total: receive -> book updated', segment = 'recv->publish (total incl. queue)', 'Total: receive -> queue published', segment) AS series, p50Us FROM hft.latency_reports WHERE label='ec2-live' AND $__timeFilter(reportTs) AND n > 0 ORDER BY reportTs"
         }
       ]
     },
     {
-      "id": 2,
+      "id": 7,
       "type": "timeseries",
-      "title": "MD recv→pub p99 (per second)",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "title": "EC2 live p99 (imported every ~1min from journald, not a whole-run report)",
+      "description": "Same feed as the p50 panel above (label=ec2-live, scripts/reporting/import_latency_live.ps1) but plotting p99Us -- the tail behavior, not the typical case.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
       "fieldConfig": {
         "defaults": {
           "unit": "µs",
-          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
+          "custom": { "drawStyle": "line", "lineWidth": 2, "spanNulls": true, "showPoints": "never" }
         },
         "overrides": []
       },
@@ -61,65 +62,7 @@
           "editorType": "sql",
           "queryType": "timeseries",
           "format": 0,
-          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, recvToPubP99Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(recvToPubP99Us) ORDER BY ts"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "timeseries",
-      "title": "Exchange→recv p50 (signed, incl. clock skew)",
-      "description": "Exchange frame timestamp → local WS receive. Cross-clock: absolute value includes skew; watch the shape, not the level.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "µs",
-          "custom": { "drawStyle": "line", "lineWidth": 1, "spanNulls": false, "showPoints": "auto", "pointSize": 3 }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
-          "editorType": "sql",
-          "queryType": "timeseries",
-          "format": 0,
-          "rawSql": "SELECT ts, concat(venue, ' ', product) AS series, exchToRecvP50Us FROM hft.md_stats WHERE $__timeFilter(ts) AND isNotNull(exchToRecvP50Us) ORDER BY ts"
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "timeseries",
-      "title": "Strategy decision latency per order (pub→decision)",
-      "description": "Queue publish → order decision wall-clock, per placed order. Live runs only (backtest orders carry replay wall-clock and are excluded by the pubTs sanity bound).",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "µs",
-          "custom": { "drawStyle": "points", "pointSize": 5, "spanNulls": false }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
-          "editorType": "sql",
-          "queryType": "timeseries",
-          "format": 0,
-          "rawSql": "SELECT ts, runId, (tsEpochNanos - pubTs) / 1000 AS pubToDecisionUs FROM hft.orders WHERE isNotNull(pubTs) AND (tsEpochNanos - pubTs) BETWEEN 0 AND 60000000000 AND $__timeFilter(ts) ORDER BY ts"
+          "rawSql": "SELECT reportTs AS ts, multiIf(segment = 'exch->recv (epoch, skew-bounded)', '1. Receive market data (exchange network)', segment = 'recv->parse', '2. Parse WS frame', segment = 'parse->apply', '3. Rebuild order book', segment = 'apply->publish (queue write)', '4. Publish to queue', segment = 'recv->apply (total in-process)', 'Total: receive -> book updated', segment = 'recv->publish (total incl. queue)', 'Total: receive -> queue published', segment) AS series, p99Us FROM hft.latency_reports WHERE label='ec2-live' AND $__timeFilter(reportTs) AND n > 0 ORDER BY reportTs"
         }
       ]
     },
@@ -128,7 +71,7 @@
       "type": "table",
       "title": "End-of-run latency reports (all runs, µs)",
       "description": "Parsed from reports*/latency-*.txt. Backtest runs report n=0 by design (replay latency vs wall clock is meaningless).",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 17 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "sortBy": [{ "displayName": "report", "desc": true }] },

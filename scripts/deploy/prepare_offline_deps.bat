@@ -17,7 +17,7 @@ cd /d %PROJECT_ROOT%
 REM 1. C# dependency preparation
 echo.
 echo [1/2] Preparing C# dependencies...
-cd src\execution-service
+cd lowfreq\dotnet\execution-service
 
 echo   Cleaning old build...
 if exist bin rmdir /s /q bin
@@ -34,7 +34,7 @@ echo   [OK] C# dependencies prepared
 REM 2. Python dependency preparation
 echo.
 echo [2/2] Preparing Python dependencies...
-cd ..\..\src\strategy-engine
+cd ..\..\python\strategy-engine
 
 REM Create virtual environment
 if not exist venv (

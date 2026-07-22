@@ -12,7 +12,7 @@ echo "📁 Project root: $PROJECT_ROOT"
 
 # 1. C# dependency download (NuGet package cache)
 echo "📦 Preparing C# dependencies..."
-cd "$PROJECT_ROOT/src/execution-service"
+cd "$PROJECT_ROOT/lowfreq/dotnet/execution-service"
 
 echo "  🔨 Cleaning old build results..."
 rm -rf bin/ obj/
@@ -29,7 +29,7 @@ echo "     Publish directory size: $(du -sh bin/Release/net8.0/publish | cut -f1
 # 2. Python dependency download (pip wheel files)
 echo ""
 echo "📦 Preparing Python dependencies..."
-cd "$PROJECT_ROOT/src/strategy-engine"
+cd "$PROJECT_ROOT/lowfreq/python/strategy-engine"
 
 # Create virtual environment (if not exists)
 if [ ! -d "venv" ]; then
@@ -79,8 +79,8 @@ echo ""
 echo "🎉 Offline dependency preparation completed!"
 echo ""
 echo "📊 Dependency summary:"
-echo "   C# publish directory: $PROJECT_ROOT/src/execution-service/bin/Release/net8.0/publish"
-echo "   Python dependencies: $PROJECT_ROOT/src/strategy-engine/local-packages"
+echo "   C# publish directory: $PROJECT_ROOT/lowfreq/dotnet/execution-service/bin/Release/net8.0/publish"
+echo "   Python dependencies: $PROJECT_ROOT/lowfreq/python/strategy-engine/local-packages"
 echo ""
 echo "🚀 Next step: Run deployment script"
 echo "   cd $SCRIPT_DIR"

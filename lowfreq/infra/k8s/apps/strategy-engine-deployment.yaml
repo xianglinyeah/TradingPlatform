@@ -1,0 +1,152 @@
+# Complete StrategyEngine Deployment
+# Image rebuild: docker build -t docker-strategy-engine:latest lowfreq/python/strategy-engine/
+#
+# Runs in `hot` mode: same Kafka consumer + gRPC executor as `live`, plus
+# the run-control FastAPI on :8080 so Dashboard.Service can register
+# per-run_id strategy configs. Port 8080 is exposed via the Service below.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strategy-engine
+  namespace: trading-platform
+  labels:
+    app: strategy-engine
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strategy-engine
+  template:
+    metadata:
+      labels:
+        app: strategy-engine
+        version: v1
+    spec:
+      containers:
+      - name: strategy-engine
+        image: docker-strategy-engine:latest
+        imagePullPolicy: IfNotPresent
+
+        # STRATEGY_CONFIG is read from env-selector (live.yaml / e2e.yaml).
+        # `hot` mode = live engine + run-control HTTP API on :8080 for
+        # Dashboard.Service orchestration.
+        command: ["/bin/sh", "-c"]
+        args: ["exec python main.py hot --config config/$STRATEGY_CONFIG"]
+
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+
+        # Liveness/readiness probe the run-control API. The Kafka engine
+        # itself has no HTTP surface, so we probe the FastAPI /health
+        # which lives as long as the process does.
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+
+        env:
+        # Kafka configuration
+        # KAFKA_GROUP_ID is intentionally NOT set here — strategy-engine reads
+        # kafka_group_id from its YAML config (live.yaml/e2e.yaml) which uses
+        # the single canonical group "strategy_engine". Setting it via env var
+        # would shadow the YAML value and risks the rebalance-stuck failure
+        # mode documented in memory (multiple groups → GroupNotEmpty on delete).
+        - name: KAFKA_BROKERS
+          value: "kafka.infrastructure:9092"
+        - name: KAFKA_TOPIC
+          value: "market.data"
+
+        # Execution service configuration
+        - name: EXECUTION_SERVICE_ADDRESS
+          value: "execution-service:8084"
+        - name: SESSION_ID
+          value: "live-session-k8s"
+
+        # Universe management: connection to PostgreSQL market_ref schema.
+        # When strategies declare universe_id instead of explicit symbols,
+        # the engine resolves membership from this DB at startup.
+        - name: UNIVERSE_PG_CONN
+          value: "Host=postgres.infrastructure;Port=5432;Username=dev_user;Password=dev_pass;Database=dev"
+
+        # Strategy config file - read from env-selector (live.yaml / e2e.yaml).
+        - name: STRATEGY_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: env-selector
+              key: strategy_config
+
+        # Logging
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: LOG_PATH
+          value: "/var/log/services/strategy-engine"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+
+        # Strategy configuration
+        - name: STRATEGY_INITIAL_CAPITAL
+          value: "1000000"
+        - name: STRATEGY_COMMISSION_RATE
+          value: "0.0003"
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+        - name: var-logs
+          mountPath: /var/log/services/strategy-engine
+
+      volumes:
+      - name: config
+        configMap:
+          name: strategy-engine-config
+      - name: logs
+        emptyDir: {}
+      - name: var-logs
+        hostPath:
+          path: /mnt/d/TradingPlatform/logs/strategy-engine
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+
+---
+# Service for StrategyEngine
+apiVersion: v1
+kind: Service
+metadata:
+  name: strategy-engine
+  namespace: trading-platform
+  labels:
+    app: strategy-engine
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: strategy-engine

@@ -1,9 +1,9 @@
 # Parse reports*/latency-*.txt run summaries into hft.latency_reports.
 # Idempotent: (label, reportTs) pairs already present are skipped, so the
 # rolling latency-latest.txt history gets preserved in CH across runs.
-#   .\import_latency.ps1 [-Root D:\TradingPlatform\src\strategy-execution]
+#   .\import_latency.ps1 [-Root D:\TradingPlatform\hft\strategy-execution]
 param(
-    [string]$Root = "D:\TradingPlatform\src\strategy-execution"
+    [string]$Root = "D:\TradingPlatform\hft\strategy-execution"
 )
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\ch.ps1"
@@ -15,7 +15,7 @@ foreach ($dir in Get-ChildItem $Root -Directory -Filter "reports*") {
     $label = $dir.Name -replace '^reports-?', ''
     if (-not $label) { $label = "default" }
     foreach ($file in Get-ChildItem $dir.FullName -Filter "latency-*.txt") {
-        $text = Get-Content $file.FullName
+        $text = Get-Content $file.FullName -Encoding UTF8
         $header = $text | Select-Object -First 1
         if ($header -notmatch '(?<ts>\d{4}-\d{2}-\d{2}T[\d:.]+)Z') {
             Write-Warning "no header timestamp in $($file.FullName), skipping"

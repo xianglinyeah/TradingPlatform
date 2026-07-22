@@ -10,7 +10,7 @@
 # timestamp within 10s (the two files are opened ~1s apart at startup).
 # mode = arb when the directory name contains "arb", else imbalance.
 param(
-    [string]$Root = "D:\TradingPlatform\src\strategy-execution",
+    [string]$Root = "D:\TradingPlatform\hft\strategy-execution",
     [switch]$Force
 )
 $ErrorActionPreference = "Stop"
@@ -24,7 +24,7 @@ function Get-FileTs([string]$name) {
 
 function Import-File([string]$table, [string]$path, [string]$runId, [string]$mode, [string]$defaultVenue) {
     # A live producer may be mid-append: drop a torn last line (no closing brace).
-    $lines = @(Get-Content $path | Where-Object { $_.Trim().EndsWith('}') })
+    $lines = @(Get-Content $path -Encoding UTF8 | Where-Object { $_.Trim().EndsWith('}') })
     if (-not $lines) { Write-Host "  skip empty $(Split-Path $path -Leaf)"; return }
     # Incremental idempotency by row count: JSONL files are append-only, so
     # CH rows == file lines means fully imported; anything else (new lines

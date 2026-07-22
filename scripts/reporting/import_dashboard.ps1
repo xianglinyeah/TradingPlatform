@@ -11,7 +11,7 @@ $user = ($envJson | Where-Object name -eq "GF_SECURITY_ADMIN_USER").value
 $pass = ($envJson | Where-Object name -eq "GF_SECURITY_ADMIN_PASSWORD").value
 $auth = "Basic " + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${user}:${pass}"))
 
-$dashboard = Get-Content $File -Raw | ConvertFrom-Json
+$dashboard = Get-Content $File -Raw -Encoding UTF8 | ConvertFrom-Json
 $payload = @{ dashboard = $dashboard; overwrite = $true; message = "import via scripts/reporting/import_dashboard.ps1" } | ConvertTo-Json -Depth 32
 
 $resp = Invoke-WebRequest -Uri "$GrafanaUrl/api/dashboards/db" -Method Post -Headers @{Authorization = $auth} -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ContentType "application/json" -UseBasicParsing

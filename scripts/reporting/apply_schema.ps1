@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\ch.ps1"
 
-$sql = Get-Content "$PSScriptRoot\schema.sql" -Raw
+$sql = Get-Content "$PSScriptRoot\schema.sql" -Raw -Encoding UTF8
 # Strip line comments, then split on ";" statement terminators.
 $noComments = ($sql -split "`n" | Where-Object { $_.TrimStart() -notmatch '^--' }) -join "`n"
 $statements = $noComments -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ }

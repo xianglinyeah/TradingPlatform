@@ -22,10 +22,10 @@ $ErrorActionPreference = "Stop"
 # ---------------- Stage 1: fetch ----------------
 switch ($Source) {
     "local" {
-        $runRoot = "D:\TradingPlatform\src\strategy-execution"
+        $runRoot = "D:\TradingPlatform\hft\strategy-execution"
         $queues = @(
-            @{ Venue = "COINBASE"; Dir = "D:\TradingPlatform\src\marketdata-coinbase\queues\md-coinbase" },
-            @{ Venue = "OKX";      Dir = "D:\TradingPlatform\src\marketdata-okx\queues\md-okx" }
+            @{ Venue = "COINBASE"; Dir = "D:\TradingPlatform\hft\marketdata-coinbase\queues\md-coinbase" },
+            @{ Venue = "OKX";      Dir = "D:\TradingPlatform\hft\marketdata-okx\queues\md-okx" }
         )
     }
     # "ec2" { ... aws s3 sync s3://<bucket>/md-archive "$Staging\..." ; restore; set $runRoot/$queues ... }
@@ -40,7 +40,7 @@ Write-Host "=== md_top (queue replay) ==="
 New-Item -ItemType Directory -Force $Staging | Out-Null
 if (-not $env:JAVA_HOME) { $env:JAVA_HOME = "C:\Users\xiang\.jdks\openjdk-25.0.2" }
 $java = Join-Path $env:JAVA_HOME "bin\java.exe"
-$jar = "D:\TradingPlatform\src\marketdata-coinbase\target\marketdata-coinbase.jar"
+$jar = "D:\TradingPlatform\hft\marketdata-coinbase\target\marketdata-coinbase.jar"
 if (-not (Test-Path $jar)) { throw "shaded jar not found: $jar - build marketdata-coinbase first" }
 $chronicleFlags = @(
     "--add-exports=java.base/jdk.internal.ref=ALL-UNNAMED",

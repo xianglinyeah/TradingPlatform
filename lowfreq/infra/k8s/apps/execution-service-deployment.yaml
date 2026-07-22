@@ -1,0 +1,119 @@
+# ExecutionService Deployment for Kubernetes
+# Image rebuild: docker build -t docker-execution-service:latest lowfreq/dotnet/execution-service/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: trading-platform
+  labels:
+    app: execution-service
+    version: v1
+spec:
+  replicas: 1  # Simplified test configuration
+  selector:
+    matchLabels:
+      app: execution-service
+  template:
+    metadata:
+      labels:
+        app: execution-service
+        version: v1
+    spec:
+      containers:
+      - name: execution-service
+        image: docker-execution-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8084
+          name: grpc
+          protocol: TCP
+
+        env:
+        # GM Adapter configuration
+        - name: GMSettings__GrpcServerAddress
+          value: "http://execution-adapter-gm:5005"
+
+        # Database connection
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres.infrastructure;Port=5432;Database=dev;Username=dev_user;Password=dev_pass;Search Path=execution_service,public"
+
+        # Kafka market-data consumer (MarketDataCache source). Independent
+        # consumer group from strategy_engine so offsets are tracked separately.
+        - name: Kafka__BootstrapServers
+          value: "kafka.infrastructure:9092"
+        - name: Kafka__MarketDataTopic
+          value: "market.data"
+        - name: Kafka__GroupId
+          value: "execution_service"
+        - name: Kafka__AutoOffsetReset
+          value: "earliest"
+
+        # ClickHouse (prior-close lookup for §4 price-limit checks)
+        - name: ClickHouse__Host
+          value: "clickhouse.infrastructure"
+        - name: ClickHouse__Port
+          value: "8123"
+        - name: ClickHouse__Database
+          value: "market_data"
+        - name: ClickHouse__Username
+          value: "dev_user"
+        - name: ClickHouse__Password
+          value: "dev_pass"
+
+        # ASP.NET environment - read from env-selector ConfigMap so dev.py
+        # can switch between Production and E2E without editing this file.
+        - name: ASPNETCORE_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: env-selector
+              key: mode
+        - name: ASPNETCORE_URLS
+          value: "http://+:8084"
+
+        # Logging configuration
+        - name: LOG_PATH
+          value: "/var/log/services/execution-service"
+
+        # Resource limits
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+
+        # execution-service exposes HTTP /health on port 8083 (the Http
+        # Kestrel endpoint, separate from the Http2 gRPC port 8084). See
+        # Program.cs MapGet("/health").
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: var-logs
+          mountPath: /var/log/services/execution-service
+
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: var-logs
+        hostPath:
+          path: /mnt/d/TradingPlatform/logs/execution-service
+          type: DirectoryOrCreate
+
+      restartPolicy: Always
+
+# NOTE: Service definition is in execution-service-service.yaml (LoadBalancer 8084/8083)
